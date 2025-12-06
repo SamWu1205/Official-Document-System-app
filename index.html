@@ -6,7 +6,7 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
   />
-  <title>公文發文系統 (正式修正版)</title>
+  <title>公文發文系統 (最終修正版)</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
 
@@ -23,19 +23,21 @@
 
   <style>
     * { -webkit-tap-highlight-color: transparent; }
-    body { background-color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
+    body { background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     
-    /* 側邊欄動畫 */
-    .sidebar { transition: transform 0.3s ease-in-out; }
+    /* 側邊欄 */
+    .sidebar { transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
     .sidebar-closed { transform: translateX(-100%); }
     .sidebar-open { transform: translateX(0); }
     
+    /* 隱藏滾動條 */
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-    /* 輸入框統一樣式 */
-    .input-base {
-      height: 42px; /* 強制統一高度 */
+    /* 強制統一輸入框高度 */
+    .input-std {
+      height: 44px;
+      line-height: normal;
     }
   </style>
 </head>
@@ -56,10 +58,11 @@
       measurementId: "G-B9R46YLGXQ",
     };
 
-    const CURRENT_APP_ID = "dispatch-system-user-v3"; // 升級 v3 以應用新資料結構
+    // ⚠️ 固定 ID，避免資料遺失。請勿更改此行。
+    const CURRENT_APP_ID = "dispatch-system-final-v1"; 
 
     try { firebase.initializeApp(firebaseConfig); } 
-    catch (e) { console.warn("Firebase initialized already"); }
+    catch (e) { /* ignore */ }
 
     const auth = firebase.auth();
     const db = firebase.firestore();
@@ -67,561 +70,448 @@
     const { useState, useEffect, useMemo } = React;
 
     // ======================
-    // 2. 主程式
+    // 2. Main App
     // ======================
     function App() {
-      // --- State: 資料 ---
+      // 資料 State
       const [user, setUser] = useState(null);
       const [records, setRecords] = useState([]);
       const [meta, setMeta] = useState({ authors: [], codes: [], authorDefaults: {} });
       const [loading, setLoading] = useState(true);
-      const [processing, setProcessing] = useState(false);
-
-      // --- State: UI ---
+      
+      // UI State
       const [menuOpen, setMenuOpen] = useState(false);
+      const [processing, setProcessing] = useState(false);
       const [filter, setFilter] = useState({ type: 'all', value: '' });
-      const [sortDesc, setSortDesc] = useState(true);
 
-      // --- State: 表單 ---
-      const [form, setForm] = useState({
+      // 表單 State
+      const initialForm = {
         id: null,
         date: new Date().toISOString().split("T")[0],
         author: "",
         code: "",
-        number: "",
+        number: "",      // 總號 (114xxxx)
         subject: "",
-        docType: "一般公文", // 一般公文, 獎懲, 調職(晉升)
-        rank: "軍官"        // 軍官, 士官, 士兵
-      });
+        docType: "一般公文", 
+        rank: "軍官",
+        subNumber: ""    // 分類小號 (例如: 軍官001)
+      };
+      const [form, setForm] = useState(initialForm);
 
-      // --- 監聽 ---
+      // --- 初始化 ---
       useEffect(() => {
-        auth.signInAnonymously().catch(e => alert("登入失敗: " + e.message));
+        auth.signInAnonymously().catch(console.error);
         return auth.onAuthStateChanged(u => setUser(u));
       }, []);
 
       useEffect(() => {
         if (!user) return;
         
-        // 1. 監聽公文紀錄
+        // 監聽紀錄
         const recordsRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records");
-        const unsubRecords = recordsRef.orderBy("createdAt", "desc").onSnapshot(snap => {
-          const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          setRecords(data);
+        const unsubRec = recordsRef.orderBy("createdAt", "desc").onSnapshot(snap => {
+          setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() })));
           setLoading(false);
         });
 
-        // 2. 監聽設定檔 (發文者/代字)
+        // 監聽 Metadata (發文者/代字清單)
         const metaRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general");
         const unsubMeta = metaRef.onSnapshot(doc => {
-          if (doc.exists) {
-            setMeta(doc.data());
-          } else {
-            // 初始值
-            setMeta({ authors: [], codes: [], authorDefaults: {} });
-            metaRef.set({ authors: [], codes: [], authorDefaults: {} });
-          }
+          if (doc.exists) setMeta(doc.data());
+          else metaRef.set({ authors: [], codes: [], authorDefaults: {} }); // 初始建立
         });
 
-        return () => { unsubRecords(); unsubMeta(); };
+        return () => { unsubRec(); unsubMeta(); };
       }, [user]);
 
-      // --- 邏輯函式 ---
+      // --- 核心邏輯：流水號 ---
 
-      // 智慧字號產生器 (核心邏輯修正)
-      const generateNextNumber = () => {
+      // 1. 產生總號 (Global Number)
+      const generateMainNumber = () => {
         const today = new Date();
         const rocYear = today.getFullYear() - 1911;
         const prefix = String(rocYear); 
         
-        // 篩選邏輯：
-        // 1. 必須是今年的 (開頭為 114...)
-        // 2. 如果是「一般公文」，只看「一般公文」的流水號
-        // 3. 如果是「獎懲」或「調職」，則要看該「軍階」的流水號 (軍官/士官/士兵 分開跳號)
-        
-        const relevantRecords = records.filter(r => {
-           if (!r.number || !String(r.number).startsWith(prefix)) return false;
-           
-           // 舊資料沒有 docType，視為一般公文
-           const rType = r.docType || "一般公文"; 
-           const rRank = r.rank || "軍官";
-
-           if (form.docType === "一般公文") {
-             return rType === "一般公文";
-           } else {
-             // 獎懲或調職：同種類且同階級才一起跳號
-             // 或者：所有非一般公文，依照階級跳號？(依據您的文字描述：獎懲及調職區分軍官、士官、士兵編號)
-             // 這裡假設：獎懲和調職共用「人職(官/士/兵)xxx號」的邏輯，還是各自獨立？
-             // 通常是一類一號。這裡先設定為：只要不是一般公文，就看階級與種類是否完全一致。
-             return rType === form.docType && rRank === form.rank;
-           }
-        });
-
-        const nums = relevantRecords
-          .map(r => parseInt(r.number, 10))
+        // 找出所有 114 開頭的號碼，不分公文種類
+        const nums = records
+          .map(r => r.number)
+          .filter(n => n && String(n).startsWith(prefix))
+          .map(n => parseInt(n, 10))
           .filter(n => !Number.isNaN(n));
 
         if (nums.length === 0) return prefix + "0000001";
-        const nextNum = Math.max(...nums) + 1;
-        return String(nextNum);
+        return String(Math.max(...nums) + 1);
       };
 
-      // 處理發文者變更 (自動帶入預設代字)
+      // 2. 產生分類小號 (Sub Number) - 針對 獎懲/調職 + 階級
+      const generateSubNumber = (targetType, targetRank) => {
+        if (targetType === "一般公文") return ""; // 一般公文沒有小號
+
+        // 篩選：同種類 (獎懲=獎懲) AND 同階級 (軍官=軍官)
+        const relevant = records.filter(r => 
+          r.docType === targetType && r.rank === targetRank && r.subNumber
+        );
+
+        // 找出目前最大號
+        const nums = relevant.map(r => parseInt(r.subNumber, 10)).filter(n => !Number.isNaN(n));
+        
+        if (nums.length === 0) return "001"; // 第一號
+        const next = Math.max(...nums) + 1;
+        return String(next).padStart(3, '0'); // 補零為 002
+      };
+
+      // --- 動作處理 ---
+
       const handleAuthorChange = (val) => {
-        let updates = { author: val };
-        // 若該發文者有預設代字，且目前代字欄位為空，自動填入
-        if (meta.authorDefaults && meta.authorDefaults[val] && !form.code) {
-            updates.code = meta.authorDefaults[val];
+        let update = { author: val };
+        // 自動帶入代字
+        if (meta.authorDefaults?.[val] && !form.code) {
+          update.code = meta.authorDefaults[val];
         }
-        setForm(prev => ({ ...prev, ...updates }));
+        setForm(prev => ({ ...prev, ...update }));
       };
 
-      // 儲存/登錄
-      const handleSave = async (isNewLogin = false) => {
+      const handleClear = () => {
+        if(confirm("確定要清除目前輸入的內容嗎？")) {
+           setForm(initialForm);
+           window.scrollTo({top:0, behavior:'smooth'});
+        }
+      };
+
+      // 登錄 / 更改
+      const handleSubmit = async (forceNew = false) => {
         if (!user) return;
         if (!form.date || !form.author || !form.code || !form.subject) {
-          alert("請填寫完整：日期、發文者、文電代字、主旨");
+          alert("請填寫完整資訊 (日期、發文者、代字、主旨)");
           return;
         }
 
         setProcessing(true);
         try {
-          const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
+          const userDoc = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
           
-          // 決定字號
-          let finalNumber = form.number;
-          if (!finalNumber || isNewLogin) { // 如果是新登錄，強制重算字號
-            finalNumber = generateNextNumber();
+          // 計算號碼
+          let finalMainNum = form.number;
+          let finalSubNum = form.subNumber;
+          
+          // 如果是「新登錄」或是「強制另存」，才需要重新取號
+          // 若是「更改」且已經有號碼，則維持原號
+          const isNew = forceNew || !form.id;
+
+          if (isNew) {
+            finalMainNum = generateMainNumber();
+            if (form.docType !== "一般公文") {
+              finalSubNum = generateSubNumber(form.docType, form.rank);
+            } else {
+              finalSubNum = "";
+            }
           }
 
           const payload = {
-            date: form.date,
-            author: form.author,
-            code: form.code,
-            number: finalNumber,
-            subject: form.subject,
-            docType: form.docType,
-            rank: form.rank,
+            ...form,
+            id: null, // 確保不存入 ID 欄位
+            number: finalMainNum,
+            subNumber: finalSubNum,
             updatedAt: new Date().toISOString(),
           };
 
-          if (isNewLogin || !form.id) {
-             payload.createdAt = new Date().toISOString();
-             await userRef.collection("records").add(payload);
-             alert(`✅ 登錄成功！字號：${finalNumber}`);
+          if (isNew) {
+            payload.createdAt = new Date().toISOString();
+            await userDoc.collection("records").add(payload);
           } else {
-             // 修改舊資料
-             await userRef.collection("records").doc(form.id).set(payload, { merge: true });
-             alert("✅ 修改成功");
+            // 更新現有
+            await userDoc.collection("records").doc(form.id).set(payload, { merge: true });
           }
 
-          // **關鍵修正**：同時更新 Metadata (Sidebar 資料)
-          const metaDocRef = userRef.collection("metadata").doc("general");
+          // **關鍵修正：更新 Metadata (側邊欄選單)**
+          // 確保輸入的新名字/代字被記錄
+          const metaRef = userDoc.collection("metadata").doc("general");
           await db.runTransaction(async (t) => {
-              const doc = await t.get(metaDocRef);
-              const data = doc.data() || { authors: [], codes: [], authorDefaults: {} };
-              let changed = false;
-              
-              if (!data.authors.includes(form.author)) {
-                  data.authors.push(form.author);
-                  changed = true;
-              }
-              if (!data.codes.includes(form.code)) {
-                  data.codes.push(form.code);
-                  changed = true;
-              }
-              
-              if (changed) {
-                  t.set(metaDocRef, data, { merge: true });
-              }
+            const doc = await t.get(metaRef);
+            const data = doc.data() || { authors: [], codes: [], authorDefaults: {} };
+            let changed = false;
+
+            if (form.author && !data.authors.includes(form.author)) {
+              data.authors.push(form.author);
+              changed = true;
+            }
+            if (form.code && !data.codes.includes(form.code)) {
+              data.codes.push(form.code);
+              changed = true;
+            }
+            if (changed) {
+              t.set(metaRef, data, { merge: true });
+            }
           });
 
-          // 重置表單 (保留日期與種類)
-          setForm(prev => ({ 
-              ...prev, 
-              id: null, 
-              number: "", 
-              subject: "", 
-              // author/code 保留或清空？通常連續發文會保留，這裡先不清空 author 以方便操作
-          }));
-          window.scrollTo({ top: 0, behavior: "smooth" });
+          alert(isNew ? `✅ 登錄成功！\n總號：${finalMainNum}` + (finalSubNum ? `\n分類號：${finalSubNum}` : "") : "✅ 資料已更新");
+
+          // 發文後自動清空，準備下一筆
+          setForm(initialForm);
+          window.scrollTo({top:0, behavior:'smooth'});
 
         } catch (e) {
           console.error(e);
-          alert("儲存失敗");
+          alert("儲存失敗：" + e.message);
         } finally {
           setProcessing(false);
         }
       };
 
-      // 刪除紀錄
-      const handleDeleteRecord = async (id) => {
-        if (!confirm("確定刪除此筆紀錄？")) return;
+      // 刪除
+      const handleDelete = async (id) => {
+        if(!confirm("確定刪除此紀錄？")) return;
         await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete();
-        if (form.id === id) handleNew(); // 若刪除正在編輯的，重置表單
+        if(form.id === id) setForm(initialForm);
       };
 
-      // 點擊「新增」按鈕
-      const handleNew = () => {
-        setForm({
-            id: null,
-            date: new Date().toISOString().split("T")[0],
-            author: "",
-            code: "",
-            number: "",
-            subject: "",
-            docType: "一般公文",
-            rank: "軍官"
-        });
-        window.scrollTo({ top: 0, behavior: "smooth" });
+      // 側邊欄管理
+      const deleteMeta = async (type, val) => {
+        if(!confirm(`確定移除選單項目「${val}」？`)) return;
+        const ref = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general");
+        const doc = await ref.get();
+        if(!doc.exists) return;
+        const data = doc.data();
+        if(type === 'author') ref.update({ authors: data.authors.filter(x => x !== val) });
+        else ref.update({ codes: data.codes.filter(x => x !== val) });
       };
 
-      // 側邊欄：設定預設代字
-      const setAuthorDefaultCode = async (authorName) => {
-        const currentDefault = meta.authorDefaults?.[authorName] || "";
-        const code = prompt(`設定「${authorName}」的預設文電代字：\n(下次選擇該員時會自動帶入)`, currentDefault);
-        if (code === null) return;
-        
-        const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-        const newDefaults = { ...meta.authorDefaults, [authorName]: code };
-        await userRef.collection("metadata").doc("general").set({ authorDefaults: newDefaults }, { merge: true });
+      const setAuthorDefault = async (author) => {
+        const code = prompt(`設定 ${author} 的預設代字：`, meta.authorDefaults?.[author] || "");
+        if(code === null) return;
+        db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general")
+          .set({ authorDefaults: { ...meta.authorDefaults, [author]: code } }, { merge: true });
       };
 
-      // 側邊欄：刪除選項
-      const deleteMetaItem = async (type, value) => {
-        if(!confirm(`確定從選單移除「${value}」？`)) return;
-        const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-        const currentData = await userRef.collection("metadata").doc("general").get();
-        const data = currentData.data();
-        
-        if (type === 'author') {
-            const newAuthors = data.authors.filter(x => x !== value);
-            await userRef.collection("metadata").doc("general").update({ authors: newAuthors });
-        } else {
-            const newCodes = data.codes.filter(x => x !== value);
-            await userRef.collection("metadata").doc("general").update({ codes: newCodes });
-        }
-      };
-
-      // 顯示清單計算
+      // 列表顯示
       const displayRecords = useMemo(() => {
-        let result = [...records];
-        if (filter.type === 'author') result = result.filter(r => r.author === filter.value);
-        if (filter.type === 'code') result = result.filter(r => r.code === filter.value);
+        let res = [...records];
+        if (filter.type === 'author') res = res.filter(r => r.author === filter.value);
+        if (filter.type === 'code') res = res.filter(r => r.code === filter.value);
         if (filter.type === 'search') {
             const k = filter.value.toLowerCase();
-            result = result.filter(r => 
-                (r.subject && r.subject.includes(k)) || 
-                (r.number && String(r.number).includes(k)) ||
-                (r.date && r.date.includes(k))
-            );
+            res = res.filter(r => (r.subject||"").includes(k) || (r.number||"").includes(k));
         }
-        
-        result.sort((a, b) => {
-            const dateA = new Date(a.date).getTime();
-            const dateB = new Date(b.date).getTime();
-            if (dateA !== dateB) return sortDesc ? dateB - dateA : dateA - dateB;
-            const numA = parseInt(a.number) || 0;
-            const numB = parseInt(b.number) || 0;
-            return sortDesc ? numB - numA : numA - numB;
-        });
-        return result;
-      }, [records, filter, sortDesc]);
+        return res; // 預設已在 fetch 時用 createdAt desc 排序
+      }, [records, filter]);
 
-      if (!user && loading) return <div className="h-screen flex items-center justify-center">載入中...</div>;
+      // --- UI Render ---
+      if (!user && loading) return <div className="h-screen flex items-center justify-center text-slate-500">系統連線中...</div>;
 
       return (
-        <div className="relative min-h-screen bg-slate-100 flex flex-col">
+        <div className="min-h-screen flex flex-col relative overflow-hidden">
+          
+          {/* 側邊欄 Overlay */}
+          {menuOpen && <div className="absolute inset-0 bg-black/60 z-30 backdrop-blur-sm" onClick={() => setMenuOpen(false)} />}
+          
+          {/* 側邊欄 */}
+          <div className={`fixed inset-y-0 left-0 w-72 bg-white shadow-2xl z-40 sidebar flex flex-col ${menuOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
+            <div className="bg-slate-800 text-white p-4 font-bold flex justify-between items-center">
+              <span>設定選單</span>
+              <button onClick={() => setMenuOpen(false)}><i className="fas fa-times"></i></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-6">
+               <button onClick={()=>{setFilter({type:'all'});setMenuOpen(false)}} className="w-full py-2 bg-slate-100 rounded font-bold text-slate-700">顯示全部紀錄</button>
+               
+               {/* 發文者管理 */}
+               <div>
+                 <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">發文者</h3>
+                 {meta.authors.map(a => (
+                   <div key={a} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
+                     <button onClick={()=>{setFilter({type:'author', value:a});setMenuOpen(false)}} className="text-slate-700 font-medium">{a}</button>
+                     <div className="flex gap-3 text-slate-300">
+                       <button onClick={()=>setAuthorDefault(a)} className="hover:text-blue-500"><i className="fas fa-cog"></i></button>
+                       <button onClick={()=>deleteMeta('author', a)} className="hover:text-red-500"><i className="fas fa-trash-alt"></i></button>
+                     </div>
+                   </div>
+                 ))}
+                 {meta.authors.length===0 && <div className="text-xs text-slate-300">發文後自動新增</div>}
+               </div>
+
+               {/* 代字管理 */}
+               <div>
+                 <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">文電代字</h3>
+                 {meta.codes.map(c => (
+                   <div key={c} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
+                     <button onClick={()=>{setFilter({type:'code', value:c});setMenuOpen(false)}} className="text-slate-700 font-medium">{c}</button>
+                     <button onClick={()=>deleteMeta('code', c)} className="text-slate-300 hover:text-red-500"><i className="fas fa-trash-alt"></i></button>
+                   </div>
+                 ))}
+               </div>
+            </div>
+          </div>
+
+          {/* Header */}
+          <header className="bg-white border-b sticky top-0 z-20 px-4 h-14 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-3">
+              <button onClick={() => setMenuOpen(true)} className="text-slate-600 text-lg p-1"><i className="fas fa-bars"></i></button>
+              <h1 className="font-bold text-lg text-slate-800">公文發文系統</h1>
+            </div>
+            {/* 清除按鈕 */}
+            <button onClick={handleClear} className="text-red-500 font-bold text-sm px-3 py-1 rounded-full bg-red-50 hover:bg-red-100 transition">
+              <i className="fas fa-eraser mr-1"></i>清除
+            </button>
+          </header>
+
+          <main className="flex-1 max-w-lg mx-auto w-full p-3 pb-20 space-y-4">
             
-            {/* 側邊欄遮罩 */}
-            {menuOpen && <div className="absolute inset-0 bg-black/50 z-20" onClick={() => setMenuOpen(false)}></div>}
-
-            {/* 側邊欄內容 */}
-            <div className={`fixed top-0 left-0 bottom-0 w-64 bg-white z-30 shadow-2xl sidebar flex flex-col ${menuOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
-                <div className="p-4 bg-blue-800 text-white font-bold flex justify-between items-center">
-                    <span>設定與篩選</span>
-                    <button onClick={() => setMenuOpen(false)}><i className="fas fa-times"></i></button>
+            {/* 輸入區塊 */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 space-y-4">
+              
+              {/* Row 1: 日期 & 發文者 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-slate-500 ml-1">發文日期</label>
+                  <input type="date" 
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 text-sm input-std focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={form.date} onChange={e=>setForm({...form, date:e.target.value})}
+                  />
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                    <button onClick={() => { setFilter({type:'all'}); setMenuOpen(false); }} className="w-full py-2 bg-slate-100 rounded font-bold text-slate-700">顯示全部</button>
-                    
-                    {/* 發文者列表 */}
-                    <div>
-                        <h3 className="text-xs font-bold text-slate-400 mb-2">發文者 (點擊篩選)</h3>
-                        {meta.authors.map(a => (
-                            <div key={a} className="flex justify-between items-center py-1 group">
-                                <button onClick={() => { setFilter({type:'author', value: a}); setMenuOpen(false); }} className="text-slate-700 font-medium truncate flex-1 text-left">
-                                    {a}
-                                </button>
-                                <div className="flex gap-2">
-                                    <button onClick={() => setAuthorDefaultCode(a)} className="text-slate-300 hover:text-blue-500"><i className="fas fa-cog"></i></button>
-                                    <button onClick={() => deleteMetaItem('author', a)} className="text-slate-300 hover:text-red-500"><i className="fas fa-trash-alt"></i></button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* 代字列表 */}
-                    <div>
-                        <h3 className="text-xs font-bold text-slate-400 mb-2">文電代字 (點擊篩選)</h3>
-                        {meta.codes.map(c => (
-                            <div key={c} className="flex justify-between items-center py-1">
-                                <button onClick={() => { setFilter({type:'code', value: c}); setMenuOpen(false); }} className="text-slate-700 font-medium truncate flex-1 text-left">
-                                    {c}
-                                </button>
-                                <button onClick={() => deleteMetaItem('code', c)} className="text-slate-300 hover:text-red-500"><i className="fas fa-trash-alt"></i></button>
-                            </div>
-                        ))}
-                    </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-slate-500 ml-1">發文者</label>
+                  <div className="relative">
+                    <input type="text" list="authList" placeholder="輸入或選擇"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 text-sm input-std focus:ring-2 focus:ring-blue-500 outline-none"
+                      value={form.author} onChange={e=>handleAuthorChange(e.target.value)}
+                    />
+                    <datalist id="authList">{meta.authors.map(a=><option key={a} value={a}/>)}</datalist>
+                    <i className="fas fa-caret-down absolute right-3 top-3.5 text-slate-400 pointer-events-none"></i>
+                  </div>
                 </div>
+              </div>
+
+              {/* Row 2: 代字 & 總號 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-bold text-slate-500 ml-1">文電代字</label>
+                  <div className="relative">
+                    <input type="text" list="codeList" placeholder="輸入或選擇"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 text-sm input-std focus:ring-2 focus:ring-blue-500 outline-none"
+                      value={form.code} onChange={e=>setForm({...form, code:e.target.value})}
+                    />
+                    <datalist id="codeList">{meta.codes.map(c=><option key={c} value={c}/>)}</datalist>
+                    <i className="fas fa-caret-down absolute right-3 top-3.5 text-slate-400 pointer-events-none"></i>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                   <div className="flex justify-between items-baseline px-1">
+                     <label className="text-xs font-bold text-slate-500">總號 (流水號)</label>
+                     <span className="text-[10px] text-slate-400">系統自動產生</span>
+                   </div>
+                   <input type="text" readOnly placeholder="發文後自動產生"
+                     className="w-full bg-slate-100 border border-slate-200 rounded-lg px-2 text-sm input-std text-slate-400 cursor-not-allowed"
+                     value={form.number}
+                   />
+                </div>
+              </div>
+
+              {/* Row 3: 主旨 */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold text-slate-500 ml-1">主旨</label>
+                <textarea rows="2" placeholder="請輸入公文主旨..."
+                   className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                   value={form.subject} onChange={e=>setForm({...form, subject:e.target.value})}
+                ></textarea>
+              </div>
+
+              {/* Row 4: 公文種類 */}
+              <div className="space-y-2 pt-1 border-t border-slate-100">
+                <div className="flex items-center gap-2">
+                   <span className="text-xs font-bold text-slate-500">公文種類：</span>
+                   <div className="flex bg-slate-100 p-1 rounded-lg">
+                      {['一般公文','獎懲','調職(晉升)'].map(t => (
+                        <button key={t} onClick={()=>setForm({...form, docType:t})}
+                          className={`px-3 py-1 text-xs rounded-md font-bold transition-all ${form.docType===t ? 'bg-white shadow text-blue-600' : 'text-slate-400'}`}>
+                          {t}
+                        </button>
+                      ))}
+                   </div>
+                </div>
+
+                {/* Row 5: 階級 (條件顯示) */}
+                {form.docType !== '一般公文' && (
+                  <div className="flex items-center gap-2 animate-fadeIn">
+                     <span className="text-xs font-bold text-slate-500">適用階級：</span>
+                     <div className="flex bg-slate-100 p-1 rounded-lg">
+                        {['軍官','士官','士兵'].map(r => (
+                          <button key={r} onClick={()=>setForm({...form, rank:r})}
+                            className={`px-3 py-1 text-xs rounded-md font-bold transition-all ${form.rank===r ? 'bg-white shadow text-indigo-600' : 'text-slate-400'}`}>
+                            {r}
+                          </button>
+                        ))}
+                     </div>
+                  </div>
+                )}
+                {form.docType !== '一般公文' && (
+                  <div className="text-[10px] text-indigo-500 px-1">
+                    * 將自動產生 {form.docType}-{form.rank} 專用分類編號
+                  </div>
+                )}
+              </div>
+
+              {/* Row 6: 按鈕 */}
+              <div className="grid grid-cols-3 gap-3 pt-2">
+                 <button onClick={()=>{
+                   if(!form.subject) return alert("請輸入關鍵字");
+                   setFilter({type:'search', value:form.subject});
+                 }} className="py-2.5 rounded-lg border border-slate-300 text-slate-600 font-bold text-sm bg-white active:scale-95 transition">
+                   <i className="fas fa-search mr-1"></i>查詢
+                 </button>
+                 
+                 <button onClick={()=>handleSubmit(false)} disabled={!form.id} 
+                   className={`py-2.5 rounded-lg border font-bold text-sm transition ${form.id ? 'border-blue-200 bg-blue-50 text-blue-600 active:scale-95':'border-slate-100 text-slate-300 cursor-not-allowed'}`}>
+                   <i className="fas fa-pen mr-1"></i>更改
+                 </button>
+                 
+                 <button onClick={()=>handleSubmit(true)} disabled={processing}
+                   className="py-2.5 rounded-lg bg-slate-800 text-white font-bold text-sm shadow-md active:scale-95 transition flex justify-center items-center">
+                   {processing ? <i className="fas fa-spinner fa-spin"></i> : <><i className="fas fa-file-export mr-1"></i>登錄</>}
+                 </button>
+              </div>
             </div>
 
-            {/* Header */}
-            <header className="bg-white border-b px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-                <div className="flex items-center gap-3">
-                    <button onClick={() => setMenuOpen(true)} className="text-slate-600 text-xl"><i className="fas fa-bars"></i></button>
-                    <h1 className="font-bold text-lg text-slate-800">公文發文系統</h1>
+            {/* 列表區 */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-end px-2">
+                <h2 className="font-bold text-slate-700">發文紀錄</h2>
+                <span className="text-xs text-slate-400">排序: 由新到舊</span>
+              </div>
+              
+              {displayRecords.map(r => (
+                <div key={r.id} onClick={()=>{setForm({...r}); window.scrollTo({top:0,behavior:'smooth'})}}
+                   className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm relative active:bg-blue-50 transition">
+                   
+                   <div className="flex justify-between items-start mb-2">
+                      <div className="text-[11px] font-mono text-slate-500 flex gap-2 items-center">
+                        <span>{r.date}</span>
+                        <span className="px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">{r.code}</span>
+                        <span className="text-blue-600 font-bold text-sm">{r.number}</span>
+                      </div>
+                      <i className="far fa-copy text-slate-300 p-1 active:text-blue-600" 
+                         onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(`${r.code}字第${r.number}號 ${r.subject}`); alert("已複製")}}
+                      ></i>
+                   </div>
+
+                   <div className="text-sm font-medium text-slate-800 mb-2">{r.subject}</div>
+
+                   <div className="flex justify-between items-center border-t border-slate-50 pt-2">
+                      <div className="flex gap-2">
+                        <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full flex items-center">
+                           <i className="fas fa-user-circle mr-1"></i>{r.author}
+                        </span>
+                        {r.docType !== '一般公文' && (
+                           <span className="text-[10px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-2 py-0.5 rounded-full font-bold">
+                             {r.docType}-{r.rank} 第 {r.subNumber} 號
+                           </span>
+                        )}
+                      </div>
+                      <button onClick={(e)=>{e.stopPropagation();handleDelete(r.id)}} className="text-xs text-red-300 hover:text-red-500 px-2">刪除</button>
+                   </div>
                 </div>
-                {/* 新增按鈕 (修復版) */}
-                <button 
-                    onClick={handleNew}
-                    className="flex items-center gap-1 text-blue-600 font-bold text-sm bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-colors"
-                >
-                    <i className="fas fa-plus"></i> 新增
-                </button>
-            </header>
+              ))}
+            </div>
 
-            <main className="flex-1 p-3 pb-20 space-y-4 max-w-lg mx-auto w-full">
-                
-                {/* 輸入表單 */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-4">
-                    
-                    {/* 第一列：日期 & 發文者 */}
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-500 ml-1">發文日期</label>
-                            <input 
-                                type="date" 
-                                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 input-base text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                value={form.date}
-                                onChange={e => setForm({...form, date: e.target.value})}
-                            />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-500 ml-1">發文者</label>
-                            <div className="relative">
-                                <input 
-                                    list="author-list" 
-                                    type="text"
-                                    placeholder="選擇或輸入"
-                                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 input-base text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={form.author}
-                                    onChange={e => handleAuthorChange(e.target.value)}
-                                />
-                                <datalist id="author-list">
-                                    {meta.authors.map(a => <option key={a} value={a} />)}
-                                </datalist>
-                                {/* 下拉箭頭裝飾 */}
-                                <i className="fas fa-caret-down absolute right-3 top-3 text-slate-400 pointer-events-none"></i>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* 第二列：文電代字 & 字號 */}
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-500 ml-1">文電代字</label>
-                            <div className="relative">
-                                <input 
-                                    list="code-list" 
-                                    type="text"
-                                    placeholder="選擇或輸入"
-                                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 input-base text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={form.code}
-                                    onChange={e => setForm({...form, code: e.target.value})}
-                                />
-                                <datalist id="code-list">
-                                    {meta.codes.map(c => <option key={c} value={c} />)}
-                                </datalist>
-                                <i className="fas fa-caret-down absolute right-3 top-3 text-slate-400 pointer-events-none"></i>
-                            </div>
-                        </div>
-                        <div className="space-y-1">
-                            <div className="flex justify-between items-baseline px-1">
-                                <label className="text-xs font-bold text-slate-500">字號</label>
-                                <span className="text-[10px] text-slate-400">留空自動產生</span>
-                            </div>
-                            <input 
-                                type="text" 
-                                placeholder="自動流水號"
-                                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 input-base text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                value={form.number}
-                                onChange={e => setForm({...form, number: e.target.value})}
-                            />
-                        </div>
-                    </div>
-
-                    {/* 主旨 */}
-                    <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-500 ml-1">主旨</label>
-                        <textarea 
-                            rows="2"
-                            className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                            placeholder="輸入公文主旨..."
-                            value={form.subject}
-                            onChange={e => setForm({...form, subject: e.target.value})}
-                        ></textarea>
-                    </div>
-
-                    {/* 類型選擇 (按鈕群組) */}
-                    <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-500 ml-1">公文種類</label>
-                        <div className="flex gap-2">
-                            {['一般公文', '獎懲', '調職(晉升)'].map(t => (
-                                <button
-                                    key={t}
-                                    onClick={() => setForm({...form, docType: t})}
-                                    className={`flex-1 py-1.5 rounded-md text-xs font-bold border transition-colors ${
-                                        form.docType === t 
-                                        ? 'bg-blue-600 text-white border-blue-600' 
-                                        : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
-                                    }`}
-                                >
-                                    {t}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* 軍階選擇 (僅在非一般公文時顯示，或總是顯示依需求，這裡設定總是顯示以利切換) */}
-                    {form.docType !== '一般公文' && (
-                        <div className="space-y-1 animate-fadeIn">
-                            <label className="text-xs font-bold text-slate-500 ml-1">適用軍階 (影響流水號)</label>
-                            <div className="flex gap-2">
-                                {['軍官', '士官', '士兵'].map(r => (
-                                    <button
-                                        key={r}
-                                        onClick={() => setForm({...form, rank: r})}
-                                        className={`flex-1 py-1.5 rounded-md text-xs font-bold border transition-colors ${
-                                            form.rank === r 
-                                            ? 'bg-indigo-600 text-white border-indigo-600' 
-                                            : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
-                                        }`}
-                                    >
-                                        {r}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 操作按鈕 */}
-                    <div className="grid grid-cols-3 gap-2 pt-2">
-                        <button 
-                            onClick={() => {
-                                if(!form.subject) return alert("請輸入關鍵字");
-                                setFilter({type:'search', value: form.subject});
-                            }}
-                            className="flex items-center justify-center gap-1 border border-slate-300 rounded-lg py-2.5 text-slate-600 font-bold text-sm bg-white active:scale-95 transition-transform"
-                        >
-                            <i className="fas fa-search"></i> 查詢
-                        </button>
-
-                        <button 
-                            onClick={() => handleSave(false)} // false = 嘗試更新
-                            disabled={!form.id} // 無 ID 時不能按更改
-                            className={`flex items-center justify-center gap-1 border rounded-lg py-2.5 font-bold text-sm transition-all ${
-                                form.id 
-                                ? 'border-blue-200 bg-blue-50 text-blue-600 active:scale-95' 
-                                : 'border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed'
-                            }`}
-                        >
-                            <i className="fas fa-pen"></i> 更改
-                        </button>
-
-                        <button 
-                            onClick={() => handleSave(true)} // true = 強制登錄新檔
-                            disabled={processing}
-                            className="flex items-center justify-center gap-1 bg-slate-800 text-white rounded-lg py-2.5 font-bold text-sm active:scale-95 transition-transform"
-                        >
-                            <i className="fas fa-file-export"></i> 登錄
-                        </button>
-                    </div>
-
-                </div>
-
-                {/* 列表區 */}
-                <div className="flex justify-between items-center px-2">
-                    <div className="text-sm font-bold text-slate-700">
-                        發文紀錄 
-                        {filter.type !== 'all' && <span className="text-xs text-blue-500 ml-2">(篩選中)</span>}
-                    </div>
-                    <button onClick={() => setSortDesc(!sortDesc)} className="text-xs bg-white border px-2 py-1 rounded text-slate-500">
-                        {sortDesc ? "由新到舊" : "由舊到新"} <i className={`fas fa-sort-${sortDesc ? 'amount-down' : 'amount-up'}`}></i>
-                    </button>
-                </div>
-
-                <div className="space-y-3">
-                    {displayRecords.map(r => (
-                        <div 
-                            key={r.id}
-                            onClick={() => {
-                                setForm({
-                                    id: r.id,
-                                    date: r.date,
-                                    author: r.author,
-                                    code: r.code,
-                                    number: r.number,
-                                    subject: r.subject,
-                                    docType: r.docType || "一般公文",
-                                    rank: r.rank || "軍官"
-                                });
-                                window.scrollTo({ top: 0, behavior: "smooth" });
-                            }}
-                            className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm active:bg-blue-50 transition-colors relative"
-                        >
-                            <div className="flex justify-between items-start mb-1 text-[11px] text-slate-500 font-mono">
-                                <div className="flex gap-2 items-center">
-                                    <span>{r.date}</span>
-                                    <span className="bg-slate-100 px-1 rounded text-slate-600">{r.code}</span>
-                                    <span className="text-blue-600 font-bold text-sm">{r.number}</span>
-                                </div>
-                                <i 
-                                    className="far fa-copy p-2 -mr-2 -mt-2 text-slate-400 active:text-blue-600"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        navigator.clipboard.writeText(`${r.date} ${r.code} ${r.number} ${r.subject}`);
-                                        alert("已複製");
-                                    }}
-                                ></i>
-                            </div>
-                            
-                            <div className="text-sm font-medium text-slate-800 mb-2 leading-relaxed">
-                                {r.subject}
-                            </div>
-
-                            <div className="flex justify-between items-center border-t pt-2 border-slate-100">
-                                <div className="flex gap-2">
-                                    <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full flex items-center">
-                                        <i className="fas fa-user-circle mr-1"></i>{r.author}
-                                    </span>
-                                    {r.docType && r.docType !== '一般公文' && (
-                                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full text-white ${r.rank === '軍官' ? 'bg-indigo-400' : 'bg-green-600'}`}>
-                                            {r.docType}-{r.rank}
-                                        </span>
-                                    )}
-                                </div>
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); handleDeleteRecord(r.id); }}
-                                    className="text-xs text-red-400 px-2"
-                                >
-                                    刪除
-                                </button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </main>
+          </main>
         </div>
       );
     }

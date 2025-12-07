@@ -6,7 +6,7 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
   />
-  <title>公文發文系統 (完美修正版)</title>
+  <title>公文發文系統 (功能修復版)</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
 
@@ -15,7 +15,7 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- Firebase 核心 (使用 compat 版本以維持相容性) -->
+  <!-- Firebase 核心 -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -25,7 +25,7 @@
   <style>
     /* 基礎設定 */
     * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
-    body { background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     
     /* 側邊欄動畫 */
     .sidebar { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
@@ -36,14 +36,14 @@
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-    /* 【修正1】強制統一輸入框高度與樣式 */
+    /* 輸入框樣式優化 */
     .input-std {
-      height: 48px;
+      height: 44px;
       width: 100%;
-      font-size: 16px; /* 防止 iOS 自動縮放 */
+      font-size: 16px;
       padding: 0 12px;
       border-radius: 8px;
-      border: 1px solid #e2e8f0;
+      border: 1px solid #cbd5e1;
       background-color: #ffffff;
       transition: all 0.2s;
     }
@@ -53,7 +53,7 @@
       outline: none;
     }
     
-    /* 下拉選單箭頭修正 */
+    /* 下拉選單箭頭 */
     .select-wrapper { position: relative; }
     .select-wrapper::after {
       content: '\f0d7';
@@ -85,8 +85,7 @@
       measurementId: "G-B9R46YLGXQ",
     };
 
-    // 使用 v5 ID 確保資料隔離與新結構
-    const CURRENT_APP_ID = "dispatch-system-final-v5"; 
+    const CURRENT_APP_ID = "dispatch-system-fixed-v2"; 
 
     try {
       if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
@@ -94,7 +93,7 @@
 
     const auth = firebase.auth();
     const db = firebase.firestore();
-    const { useState, useEffect, useMemo, useCallback } = React;
+    const { useState, useEffect, useMemo } = React;
 
     function App() {
       // --- 資料狀態 ---
@@ -109,7 +108,6 @@
       const [filter, setFilter] = useState({ type: 'all', value: '' });
 
       // --- 表單狀態 ---
-      // 定義初始狀態函數，確保每次重置都是乾淨的
       const getInitialForm = () => ({
         id: null,
         date: new Date().toISOString().split("T")[0],
@@ -124,19 +122,14 @@
       const [form, setForm] = useState(getInitialForm());
 
       // ======================
-      // 1. 系統啟動與資料同步
+      // 1. 系統啟動
       // ======================
       useEffect(() => {
-        // 【修正3】確保 Auth 持久化
         auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
           .then(() => {
-            // 監聽登入狀態
             auth.onAuthStateChanged(u => {
-              if (u) {
-                setUser(u);
-              } else {
-                auth.signInAnonymously().catch(e => console.error("Login Failed", e));
-              }
+              if (u) setUser(u);
+              else auth.signInAnonymously().catch(e => console.error(e));
             });
           });
       }, []);
@@ -149,14 +142,14 @@
         // 監聽紀錄
         const unsubRec = userRef.collection("records")
           .orderBy("createdAt", "desc")
-          .limit(100) // 限制筆數優化效能
+          .limit(100)
           .onSnapshot(snap => {
             const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             setRecords(data);
             setLoading(false);
           });
 
-        // 監聽設定 (發文者/代字)
+        // 監聽設定
         const unsubMeta = userRef.collection("metadata").doc("general")
           .onSnapshot(doc => {
             if (doc.exists) setMeta(doc.data());
@@ -167,16 +160,13 @@
       }, [user]);
 
       // ======================
-      // 2. 邏輯核心
+      // 2. 邏輯核心 (流水號計算)
       // ======================
-
-      // 計算最新號碼 (Memoized)
       const nextNumbers = useMemo(() => {
         const today = new Date();
         const rocYear = today.getFullYear() - 1911;
         const prefix = String(rocYear); 
         
-        // 主號 (ex: 1140000001)
         const mainNums = records
           .map(r => r.number)
           .filter(n => n && String(n).startsWith(prefix))
@@ -184,7 +174,6 @@
           .filter(n => !Number.isNaN(n));
         const main = mainNums.length === 0 ? prefix + "0000001" : String(Math.max(...mainNums) + 1);
 
-        // 分類號
         const getSub = (type, rank) => {
           if (type === "一般公文") return "";
           const relevant = records.filter(r => r.docType === type && r.rank === rank && r.subNumber);
@@ -195,8 +184,7 @@
         return { main, getSub };
       }, [records]);
 
-      // 【修正2】自動填入號碼
-      // 當表單是「新增模式」且「紀錄更新」時，自動預填下一個號碼
+      // 自動填號邏輯：只有在「新增模式」且「無號碼」或「號碼過期」時才更新
       useEffect(() => {
         if (!form.id) {
             const predictedSub = nextNumbers.getSub(form.docType, form.rank);
@@ -206,25 +194,32 @@
                 subNumber: predictedSub
             }));
         }
-      }, [records, form.docType, form.rank, form.id, nextNumbers]);
+      }, [records, form.docType, form.rank, form.id, nextNumbers.main]); // 依賴項精簡
 
+      // ======================
+      // 3. 操作處理
+      // ======================
 
-      // 選擇發文者 (連動代字)
+      // 選擇發文者
       const handleAuthorChange = (val) => {
         let update = { author: val };
-        // 自動帶入預設代字
         if (meta.authorDefaults?.[val] && !form.code) {
           update.code = meta.authorDefaults[val];
         }
         setForm(prev => ({ ...prev, ...update }));
       };
 
-      // 提交表單
+      // 查詢功能 (修復 BUG: 恢復查詢按鈕)
+      const handleSearch = () => {
+        if(!form.subject) return alert("請在「主旨」欄位輸入關鍵字");
+        setFilter({ type: 'search', value: form.subject });
+      };
+
+      // 提交表單 (修復 BUG: 確保連續登錄)
       const handleSubmit = async (forceNew = false) => {
         if (!user) return;
         if (!form.date || !form.author || !form.code || !form.subject) {
-          alert("請填寫完整資訊 (日期、發文者、代字、主旨)");
-          return;
+          return alert("❌ 資料不完整：日期、發文者、代字、主旨為必填");
         }
 
         setProcessing(true);
@@ -232,19 +227,19 @@
         try {
           const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
           
-          // 決定號碼
           const isNew = forceNew || !form.id;
           const finalMain = isNew ? nextNumbers.main : form.number;
           const finalSub = isNew ? nextNumbers.getSub(form.docType, form.rank) : form.subNumber;
 
           const payload = {
             ...form,
-            id: null, // 不存 ID 到欄位
+            id: null, 
             number: finalMain,
             subNumber: finalSub,
             updatedAt: new Date().toISOString()
           };
 
+          // 1. 寫入紀錄
           if (isNew) {
             payload.createdAt = new Date().toISOString();
             await userRef.collection("records").add(payload);
@@ -252,8 +247,7 @@
             await userRef.collection("records").doc(form.id).set(payload, { merge: true });
           }
 
-          // 【修正4】確保選單更新 (使用 arrayUnion)
-          // 無論是新增還是修改，都檢查並更新 metadata
+          // 2. 更新選單 (修復 BUG: 確保使用 arrayUnion)
           if (form.author && form.code) {
              await userRef.collection("metadata").doc("general").set({
                authors: firebase.firestore.FieldValue.arrayUnion(form.author),
@@ -261,14 +255,15 @@
              }, { merge: true });
           }
 
-          // 重置表單 (解決無法連續輸入問題)
+          // 3. 成功後重置 (修復 BUG: 確保 ID 清空，讓使用者可以接著打下一筆)
           const resetState = getInitialForm();
-          // 保留日期與發文者習慣，提升體驗 (可選)
+          // 貼心功能：保留日期、發文者、代字，方便連續輸入
           resetState.date = form.date; 
           resetState.author = form.author;
           resetState.code = form.code;
           
           setForm(resetState);
+          setFilter({ type: 'all', value: '' }); // 登錄後顯示全部，確認資料已進去
           window.scrollTo({top:0, behavior:'smooth'});
 
         } catch (e) {
@@ -280,20 +275,20 @@
       };
 
       const handleDelete = async (id) => {
-        if(!confirm("確定刪除?")) return;
+        if(!confirm("確定刪除此紀錄?")) return;
         await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete();
         if(form.id === id) setForm(getInitialForm());
       };
 
       const deleteMeta = async (type, val) => {
-        if(!confirm(`移除「${val}」?`)) return;
+        if(!confirm(`移除選單項目「${val}」?`)) return;
         const ref = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general");
         const update = {};
         update[type === 'author' ? 'authors' : 'codes'] = firebase.firestore.FieldValue.arrayRemove(val);
         await ref.update(update);
       };
 
-      // 篩選邏輯
+      // 篩選顯示
       const displayRecords = useMemo(() => {
         let res = [...records];
         if (filter.type === 'author') res = res.filter(r => r.author === filter.value);
@@ -308,7 +303,7 @@
       if (loading) return (
         <div className="h-screen flex flex-col items-center justify-center text-slate-500 gap-3">
           <i className="fas fa-circle-notch fa-spin text-3xl text-blue-500"></i>
-          <div>系統連線中...</div>
+          <div>系統載入中...</div>
         </div>
       );
 
@@ -327,7 +322,6 @@
                
                <div>
                  <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">發文者清單</h3>
-                 {meta.authors.length === 0 && <div className="text-sm text-slate-400 p-2 text-center bg-slate-50 rounded">尚未有紀錄</div>}
                  {meta.authors.map(a => (
                    <div key={a} className="flex justify-between items-center py-2 border-b border-slate-100">
                      <button onClick={()=>{setFilter({type:'author', value:a});setMenuOpen(false)}} className="text-slate-700 font-medium">{a}</button>
@@ -354,17 +348,16 @@
               <button onClick={() => setMenuOpen(true)} className="text-slate-600 text-xl p-2 active:bg-slate-100 rounded-full"><i className="fas fa-bars"></i></button>
               <h1 className="font-bold text-lg text-slate-800">公文發文系統</h1>
             </div>
-            <button onClick={()=>setForm(getInitialForm())} className="text-slate-500 font-medium text-sm px-3 py-1.5 rounded-full bg-slate-100 active:scale-95">
-              重置
+            <button onClick={()=>{setForm(getInitialForm());setFilter({type:'all',value:''})}} className="text-slate-500 font-medium text-sm px-3 py-1.5 rounded-full bg-slate-100 active:scale-95">
+              重置表單
             </button>
           </header>
 
           <main className="flex-1 max-w-lg mx-auto w-full p-4 pb-24 space-y-5">
             
-            {/* --- 輸入表單區塊 --- */}
+            {/* 輸入卡片 */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-5">
               
-              {/* 【修正1】排版修正：使用 Grid 嚴格對齊 */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-500 ml-1">發文日期</label>
@@ -394,9 +387,9 @@
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                   <label className="text-xs font-bold text-slate-500 ml-1">總號 (預覽)</label>
+                   <label className="text-xs font-bold text-slate-500 ml-1">總號 (自動)</label>
                    <input type="text" readOnly 
-                     className="input-std bg-slate-100 text-slate-500 font-mono tracking-wider"
+                     className="input-std bg-slate-100 text-slate-500 font-mono tracking-wider font-bold"
                      value={form.number}
                    />
                 </div>
@@ -432,30 +425,38 @@
                 )}
               </div>
 
-              <div className="flex gap-3 pt-2">
+              {/* 按鈕區 - 已修復查詢與登錄邏輯 */}
+              <div className="grid grid-cols-4 gap-2 pt-2">
+                 <button onClick={handleSearch} className="col-span-1 py-3 rounded-lg border border-slate-300 text-slate-600 font-bold bg-white active:scale-95 transition">
+                   <i className="fas fa-search mr-1"></i>
+                 </button>
+                 
                  <button onClick={()=>handleSubmit(false)} disabled={!form.id} 
-                   className={`flex-1 py-3 rounded-lg border font-bold ${form.id ? 'bg-blue-50 text-blue-600 border-blue-200':'bg-slate-50 text-slate-300 border-slate-100'}`}>
+                   className={`col-span-1 py-3 rounded-lg border font-bold ${form.id ? 'bg-blue-50 text-blue-600 border-blue-200':'bg-slate-50 text-slate-300 border-slate-100'}`}>
                    修改
                  </button>
+                 
                  <button onClick={()=>handleSubmit(true)} disabled={processing}
-                   className="flex-[2] py-3 rounded-lg bg-slate-800 text-white font-bold shadow-lg active:scale-95 transition flex justify-center items-center">
-                   {processing ? <i className="fas fa-circle-notch fa-spin"></i> : "登錄公文"}
+                   className="col-span-2 py-3 rounded-lg bg-slate-800 text-white font-bold shadow-lg active:scale-95 transition flex justify-center items-center">
+                   {processing ? <i className="fas fa-circle-notch fa-spin"></i> : <><i className="fas fa-paper-plane mr-2"></i>登錄</>}
                  </button>
               </div>
             </div>
 
-            {/* --- 清單區塊 --- */}
+            {/* 紀錄清單 */}
             <div className="space-y-4">
               <div className="flex justify-between items-end px-1">
-                <h2 className="font-bold text-slate-700">發文紀錄 ({displayRecords.length})</h2>
-                {filter.type !== 'all' && <button onClick={()=>setFilter({type:'all'})} className="text-xs text-blue-500">清除篩選</button>}
+                <h2 className="font-bold text-slate-700">
+                    發文紀錄 
+                    {filter.type !== 'all' && <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">篩選中: {filter.value}</span>}
+                </h2>
+                {filter.type !== 'all' && <button onClick={()=>setFilter({type:'all'})} className="text-xs text-blue-500 font-bold">顯示全部</button>}
               </div>
               
               {displayRecords.map(r => (
                 <div key={r.id} onClick={()=>{setForm({...r}); window.scrollTo({top:0,behavior:'smooth'})}}
-                   className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm active:bg-blue-50 transition relative overflow-hidden">
+                   className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm active:bg-blue-50 transition relative overflow-hidden group">
                    
-                   {/* 左側邊條指示器 */}
                    <div className={`absolute left-0 top-0 bottom-0 w-1 ${r.docType==='一般公文'?'bg-slate-300':'bg-indigo-500'}`}></div>
 
                    <div className="flex justify-between items-start mb-2 pl-2">
@@ -483,6 +484,13 @@
                    </div>
                 </div>
               ))}
+              
+              {displayRecords.length === 0 && (
+                <div className="text-center py-10 text-slate-400">
+                    <i className="fas fa-inbox text-4xl mb-3 opacity-30"></i>
+                    <p>尚無紀錄</p>
+                </div>
+              )}
             </div>
 
           </main>

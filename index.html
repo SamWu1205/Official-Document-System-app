@@ -6,9 +6,12 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
   />
-  <title>公文發文系統 (修復版)</title>
+  <title>公文發文系統 (Excel匯出版)</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Excel 匯出套件 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
   <!-- React 核心 -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -152,8 +155,6 @@
           .orderBy("createdAt", "desc")
           .limit(100)
           .onSnapshot(snap => {
-            // 【修復 Bug 1 & 2】強制修正 ID 問題
-            // 先取出資料，如果資料內有 'id' 欄位(舊的錯誤資料)，將其刪除，避免覆蓋真正的 doc.id
             const data = snap.docs.map(d => {
                 const docData = d.data();
                 if ('id' in docData) delete docData.id; 
@@ -222,7 +223,6 @@
          } catch(e) { console.error(e); alert("設定失敗"); }
       };
 
-      // 【修復 Bug 3】查詢功能升級：支援日期查詢
       const handleSearch = () => {
         const hasSubject = form.subject && form.subject.trim() !== "";
         const hasDate = form.date && form.date !== "";
@@ -231,14 +231,59 @@
         
         setFilter({ 
             type: 'search', 
-            value: hasSubject ? form.subject : "", // 關鍵字
-            date: hasDate ? form.date : null       // 日期
+            value: hasSubject ? form.subject : "", 
+            date: hasDate ? form.date : null
         });
+      };
+
+      // 【新增】匯出 Excel 功能
+      const handleExport = () => {
+        if (records.length === 0) return alert("目前無資料可匯出");
+
+        try {
+          // 準備資料
+          const exportData = records.map(r => ({
+            "總號": r.number,
+            "發文日期": r.date,
+            "發文者": r.author,
+            "文電代字": r.code,
+            "主旨": r.subject,
+            "分類號(分號)": r.subNumber || "",
+            "公文種類": r.docType,
+            "適用階級": r.rank || ""
+          }));
+
+          // 建立工作表
+          const wb = XLSX.utils.book_new();
+          const ws = XLSX.utils.json_to_sheet(exportData);
+          
+          // 設定欄寬 (選用)
+          const wscols = [
+            {wch: 15}, // 總號
+            {wch: 15}, // 日期
+            {wch: 10}, // 作者
+            {wch: 10}, // 代字
+            {wch: 40}, // 主旨
+            {wch: 10}, 
+            {wch: 10},
+            {wch: 10}
+          ];
+          ws['!cols'] = wscols;
+
+          XLSX.utils.book_append_sheet(wb, ws, "發文紀錄");
+
+          // 下載檔案
+          const fileName = `公文紀錄_${new Date().toISOString().split('T')[0]}.xlsx`;
+          XLSX.writeFile(wb, fileName);
+          
+        } catch (e) {
+          console.error(e);
+          alert("匯出失敗: " + e.message);
+        }
       };
 
       const handleSubmit = async (forceNew = false) => {
         if (!user) return;
-        // 驗證邏輯：如果是登錄(新增)或修改，日期是必填的。但如果是純查詢操作，使用者可能會清空日期，這裡只在送出時擋。
         if (!form.date || !form.author || !form.code || !form.subject) return alert("資料不完整：日期、發文者、代字、主旨為必填");
         
         setProcessing(true);
@@ -255,7 +300,6 @@
             updatedAt: new Date().toISOString()
           };
           
-          // 【修復 Bug 1 & 2】絕對不要把 id 存進去 payload
           delete payload.id; 
 
           if (isNew) {
@@ -285,7 +329,7 @@
       };
 
       const handleDelete = async (id) => {
-        if(!id) return alert("刪除失敗：無效的 ID"); // 防呆
+        if(!id) return alert("刪除失敗：無效的 ID"); 
         if(!confirm("確定刪除?")) return;
         try {
             await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete();
@@ -317,14 +361,13 @@
         if (filter.type === 'author') res = res.filter(r => r.author === filter.value);
         if (filter.type === 'code') res = res.filter(r => r.code === filter.value);
         
-        // 【修復 Bug 3】複合查詢邏輯
         if (filter.type === 'search') {
             const k = (filter.value || "").toLowerCase();
             const dateFilter = filter.date;
             
             res = res.filter(r => {
                 const matchSubject = (r.subject||"").toLowerCase().includes(k) || (r.number||"").toLowerCase().includes(k);
-                const matchDate = dateFilter ? r.date === dateFilter : true; // 如果有指定日期，必須符合日期
+                const matchDate = dateFilter ? r.date === dateFilter : true;
                 return matchSubject && matchDate;
             });
         }
@@ -405,9 +448,15 @@
               <button onClick={() => setMenuOpen(true)} className="text-slate-700 text-lg p-1"><i className="fas fa-bars"></i></button>
               <h1 className="font-bold text-lg text-slate-800">公文系統</h1>
             </div>
-            <button onClick={()=>{setForm(getInitialForm());setFilter({type:'all',value:''})}} className="text-slate-500 text-sm font-medium bg-slate-100 px-3 py-1.5 rounded-full">
-              重置
-            </button>
+            <div className="flex gap-2">
+                {/* 【新增】匯出按鈕 */}
+                <button onClick={handleExport} className="text-slate-600 text-sm font-bold bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-full active:scale-95 flex items-center gap-1">
+                  <i className="fas fa-file-export"></i> 匯出
+                </button>
+                <button onClick={()=>{setForm(getInitialForm());setFilter({type:'all',value:''})}} className="text-slate-500 text-sm font-medium bg-slate-100 px-3 py-1.5 rounded-full active:scale-95">
+                  重置
+                </button>
+            </div>
           </header>
 
           <main className="flex-1 w-full max-w-md mx-auto p-4 pb-24 space-y-5">
@@ -421,13 +470,13 @@
                       <input type="date" className="input-ios pr-10"
                         value={form.date} onChange={e=>setForm({...form, date:e.target.value})}
                       />
-                      {/* 【修復 Bug 3】新增清除日期按鈕 */}
+                      {/* 【修正】清除按鈕移入日曆輸入框內右側，改用簡潔的 X 圖示 */}
                       {form.date && (
                           <button 
                             onClick={()=>setForm({...form, date: ''})}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 p-1 bg-white"
+                            className="absolute right-0 top-0 bottom-0 px-3 flex items-center justify-center text-slate-400 hover:text-red-500"
                           >
-                             <i className="fas fa-times-circle"></i>
+                             <i className="fas fa-times"></i>
                           </button>
                       )}
                   </div>

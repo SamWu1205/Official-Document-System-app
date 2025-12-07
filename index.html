@@ -418,14 +418,14 @@
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 ml-1">發文日期</label>
                   <div className="relative">
-                      <input type="date" className="input-ios"
+                      <input type="date" className="input-ios pr-10"
                         value={form.date} onChange={e=>setForm({...form, date:e.target.value})}
                       />
                       {/* 【修復 Bug 3】新增清除日期按鈕 */}
                       {form.date && (
                           <button 
                             onClick={()=>setForm({...form, date: ''})}
-                            className="absolute right-8 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 p-1 bg-white"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 p-1 bg-white"
                           >
                              <i className="fas fa-times-circle"></i>
                           </button>

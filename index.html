@@ -6,7 +6,7 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
   />
-  <title>公文發文系統 (排序功能版)</title>
+  <title>公文發文系統 (修復版)</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
 
@@ -119,10 +119,7 @@
       const [menuOpen, setMenuOpen] = useState(false);
       const [processing, setProcessing] = useState(false);
       const [filter, setFilter] = useState({ type: 'all', value: '' });
-      
-      // 【新增】排序狀態：'desc' (由大到小) 或 'asc' (由小到大)
       const [sortOrder, setSortOrder] = useState('desc');
-
       const [editingDefault, setEditingDefault] = useState(null);
 
       const getInitialForm = () => ({
@@ -155,8 +152,13 @@
           .orderBy("createdAt", "desc")
           .limit(100)
           .onSnapshot(snap => {
-            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            // 這裡只儲存原始資料，排序交給 useMemo 處理
+            // 【修復 Bug 1 & 2】強制修正 ID 問題
+            // 先取出資料，如果資料內有 'id' 欄位(舊的錯誤資料)，將其刪除，避免覆蓋真正的 doc.id
+            const data = snap.docs.map(d => {
+                const docData = d.data();
+                if ('id' in docData) delete docData.id; 
+                return { id: d.id, ...docData };
+            });
             setRecords(data);
             setLoading(false);
           });
@@ -220,9 +222,25 @@
          } catch(e) { console.error(e); alert("設定失敗"); }
       };
 
+      // 【修復 Bug 3】查詢功能升級：支援日期查詢
+      const handleSearch = () => {
+        const hasSubject = form.subject && form.subject.trim() !== "";
+        const hasDate = form.date && form.date !== "";
+
+        if (!hasSubject && !hasDate) return alert("請輸入「主旨」或選擇「日期」進行查詢");
+        
+        setFilter({ 
+            type: 'search', 
+            value: hasSubject ? form.subject : "", // 關鍵字
+            date: hasDate ? form.date : null       // 日期
+        });
+      };
+
       const handleSubmit = async (forceNew = false) => {
         if (!user) return;
-        if (!form.date || !form.author || !form.code || !form.subject) return alert("資料不完整");
+        // 驗證邏輯：如果是登錄(新增)或修改，日期是必填的。但如果是純查詢操作，使用者可能會清空日期，這裡只在送出時擋。
+        if (!form.date || !form.author || !form.code || !form.subject) return alert("資料不完整：日期、發文者、代字、主旨為必填");
+        
         setProcessing(true);
         try {
           const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
@@ -232,11 +250,13 @@
           
           const payload = {
             ...form,
-            id: null,
             number: finalMain,
             subNumber: finalSub,
             updatedAt: new Date().toISOString()
           };
+          
+          // 【修復 Bug 1 & 2】絕對不要把 id 存進去 payload
+          delete payload.id; 
 
           if (isNew) {
             payload.createdAt = new Date().toISOString();
@@ -265,9 +285,15 @@
       };
 
       const handleDelete = async (id) => {
+        if(!id) return alert("刪除失敗：無效的 ID"); // 防呆
         if(!confirm("確定刪除?")) return;
-        await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete();
-        if(form.id === id) setForm(getInitialForm());
+        try {
+            await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete();
+            if(form.id === id) setForm(getInitialForm());
+        } catch(e) {
+            console.error(e);
+            alert("刪除失敗");
+        }
       };
 
       const copyToClipboard = (r) => {
@@ -285,19 +311,24 @@
          });
       };
 
-      // 篩選與排序邏輯
       const displayRecords = useMemo(() => {
         let res = [...records];
         
-        // 1. 篩選
         if (filter.type === 'author') res = res.filter(r => r.author === filter.value);
         if (filter.type === 'code') res = res.filter(r => r.code === filter.value);
+        
+        // 【修復 Bug 3】複合查詢邏輯
         if (filter.type === 'search') {
-            const k = filter.value.toLowerCase();
-            res = res.filter(r => (r.subject||"").includes(k) || (r.number||"").includes(k));
+            const k = (filter.value || "").toLowerCase();
+            const dateFilter = filter.date;
+            
+            res = res.filter(r => {
+                const matchSubject = (r.subject||"").toLowerCase().includes(k) || (r.number||"").toLowerCase().includes(k);
+                const matchDate = dateFilter ? r.date === dateFilter : true; // 如果有指定日期，必須符合日期
+                return matchSubject && matchDate;
+            });
         }
 
-        // 2. 【新增】排序 (使用數值比較以確保正確性，如果無法轉數值則回退到字串比較)
         res.sort((a, b) => {
           const numA = parseInt(a.number, 10);
           const numB = parseInt(b.number, 10);
@@ -305,7 +336,6 @@
           if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
              return sortOrder === 'desc' ? numB - numA : numA - numB;
           } else {
-             // 回退方案
              const strA = a.number || "";
              const strB = b.number || "";
              return sortOrder === 'desc' ? strB.localeCompare(strA) : strA.localeCompare(strB);
@@ -387,9 +417,20 @@
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 ml-1">發文日期</label>
-                  <input type="date" className="input-ios"
-                    value={form.date} onChange={e=>setForm({...form, date:e.target.value})}
-                  />
+                  <div className="relative">
+                      <input type="date" className="input-ios"
+                        value={form.date} onChange={e=>setForm({...form, date:e.target.value})}
+                      />
+                      {/* 【修復 Bug 3】新增清除日期按鈕 */}
+                      {form.date && (
+                          <button 
+                            onClick={()=>setForm({...form, date: ''})}
+                            className="absolute right-8 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 p-1 bg-white"
+                          >
+                             <i className="fas fa-times-circle"></i>
+                          </button>
+                      )}
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 ml-1">發文者</label>
@@ -430,7 +471,6 @@
                 ></textarea>
               </div>
 
-              {/* 公文種類與階級選擇 */}
               <div className="pt-2 space-y-3">
                 <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">
                    {['一般公文','獎懲','調職(晉升)'].map(t => (
@@ -454,7 +494,7 @@
               </div>
 
               <div className="grid grid-cols-4 gap-2 pt-2">
-                 <button onClick={()=>form.subject ? setFilter({type:'search',value:form.subject}) : alert("請輸入主旨關鍵字")} 
+                 <button onClick={handleSearch} 
                    className="col-span-1 h-12 rounded-xl border border-slate-300 text-slate-600 font-bold bg-white active:scale-95">
                    查詢
                  </button>
@@ -472,14 +512,14 @@
             </div>
 
             <div className="space-y-4">
-              {/* 【新增】標題列含排序按鈕 */}
               <div className="flex justify-between items-end px-2">
                 <div className="flex items-center gap-3">
                    <h2 className="font-bold text-slate-800 text-lg">
                       發文紀錄 
-                      {filter.type !== 'all' && <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">{filter.value}</span>}
+                      {filter.type !== 'all' && <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
+                          {filter.type === 'search' ? '搜尋模式' : filter.value}
+                      </span>}
                    </h2>
-                   {/* 排序切換按鈕 */}
                    <button 
                      onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
                      className="bg-white border border-slate-200 text-slate-600 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm active:scale-95 transition"

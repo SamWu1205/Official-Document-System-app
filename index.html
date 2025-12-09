@@ -6,19 +6,15 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
   />
-  <title>公文發文系統 (Excel匯出版)</title>
+  <title>公文發文系統 (可手動編號版)</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Excel 匯出套件 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-  <!-- React 核心 -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -29,7 +25,7 @@
     /* iPhone 優化設置 */
     * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
     body { 
-      background-color: #f8fafc; 
+      background-color: #f8fafc;
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; 
       padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
@@ -45,8 +41,7 @@
 
     /* iOS 風格輸入框 */
     .input-ios {
-      height: 48px;
-      width: 100%;
+      height: 48px; width: 100%;
       font-size: 16px; 
       padding: 0 12px;
       border-radius: 10px;
@@ -55,8 +50,7 @@
       appearance: none;
     }
     .input-ios:focus {
-      border-color: #3b82f6;
-      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+      border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
       outline: none;
     }
     
@@ -64,8 +58,7 @@
     .select-wrapper::after {
       content: '\f078';
       font-family: 'Font Awesome 6 Free';
-      font-weight: 900;
-      font-size: 12px;
+      font-weight: 900; font-size: 12px;
       position: absolute;
       right: 14px;
       top: 50%;
@@ -96,7 +89,6 @@
       appId: "1:285835980582:web:feb116841184884f685be7",
       measurementId: "G-B9R46YLGXQ",
     };
-
     const CURRENT_APP_ID = "dispatch-system-pro-v1";
 
     try {
@@ -118,13 +110,12 @@
       const [records, setRecords] = useState([]);
       const [meta, setMeta] = useState({ authors: [], codes: [], authorDefaults: {} });
       const [loading, setLoading] = useState(true);
-      
       const [menuOpen, setMenuOpen] = useState(false);
       const [processing, setProcessing] = useState(false);
       const [filter, setFilter] = useState({ type: 'all', value: '' });
       const [sortOrder, setSortOrder] = useState('desc');
       const [editingDefault, setEditingDefault] = useState(null);
-
+      
       const getInitialForm = () => ({
         id: null,
         date: new Date().toISOString().split("T")[0],
@@ -137,6 +128,9 @@
         subNumber: ""    
       });
       const [form, setForm] = useState(getInitialForm());
+      
+      // 【新增】控制手動/自動編號的狀態
+      const [isManualNumber, setIsManualNumber] = useState(false);
 
       useEffect(() => {
         auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).then(() => {
@@ -193,8 +187,10 @@
         return { main, getSub };
       }, [records]);
 
+      // 【修正】自動填號邏輯
       useEffect(() => {
-        if (!form.id) {
+        // 如果是新表單，且「不是」手動輸入模式，才自動帶入號碼
+        if (!form.id && !isManualNumber) {
             const predictedSub = nextNumbers.getSub(form.docType, form.rank);
             setForm(prev => ({
                 ...prev,
@@ -202,7 +198,7 @@
                 subNumber: predictedSub
             }));
         }
-      }, [records, form.docType, form.rank, form.id]);
+      }, [records, form.docType, form.rank, form.id, isManualNumber, nextNumbers]); // 加入 isManualNumber 依賴
 
       const handleAuthorChange = (val) => {
         let update = { author: val };
@@ -228,7 +224,6 @@
         const hasDate = form.date && form.date !== "";
 
         if (!hasSubject && !hasDate) return alert("請輸入「主旨」或選擇「日期」進行查詢");
-        
         setFilter({ 
             type: 'search', 
             value: hasSubject ? form.subject : "", 
@@ -236,12 +231,9 @@
         });
       };
 
-      // 【新增】匯出 Excel 功能
       const handleExport = () => {
         if (records.length === 0) return alert("目前無資料可匯出");
-
         try {
-          // 準備資料
           const exportData = records.map(r => ({
             "總號": r.number,
             "發文日期": r.date,
@@ -252,30 +244,16 @@
             "公文種類": r.docType,
             "適用階級": r.rank || ""
           }));
-
-          // 建立工作表
           const wb = XLSX.utils.book_new();
           const ws = XLSX.utils.json_to_sheet(exportData);
-          
-          // 設定欄寬 (選用)
           const wscols = [
-            {wch: 15}, // 總號
-            {wch: 15}, // 日期
-            {wch: 10}, // 作者
-            {wch: 10}, // 代字
-            {wch: 40}, // 主旨
-            {wch: 10}, 
-            {wch: 10},
-            {wch: 10}
+            {wch: 15}, {wch: 15}, {wch: 10}, {wch: 10}, {wch: 40}, 
+            {wch: 10}, {wch: 10}, {wch: 10}
           ];
           ws['!cols'] = wscols;
-
           XLSX.utils.book_append_sheet(wb, ws, "發文紀錄");
-
-          // 下載檔案
           const fileName = `公文紀錄_${new Date().toISOString().split('T')[0]}.xlsx`;
           XLSX.writeFile(wb, fileName);
-          
         } catch (e) {
           console.error(e);
           alert("匯出失敗: " + e.message);
@@ -290,16 +268,19 @@
         try {
           const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
           const isNew = forceNew || !form.id;
-          const finalMain = isNew ? nextNumbers.main : form.number;
-          const finalSub = isNew ? nextNumbers.getSub(form.docType, form.rank) : form.subNumber;
           
+          // 【修正】送出時的號碼判斷
+          // 如果是新增 且 不是手動輸入 -> 用自動跳號
+          // 其他情況 (包含編輯舊檔、或新增時手動輸入) -> 用表單當前的號碼
+          const finalMain = (isNew && !isManualNumber) ? nextNumbers.main : form.number;
+          
+          const finalSub = isNew ? nextNumbers.getSub(form.docType, form.rank) : form.subNumber;
           const payload = {
             ...form,
             number: finalMain,
             subNumber: finalSub,
             updatedAt: new Date().toISOString()
           };
-          
           delete payload.id; 
 
           if (isNew) {
@@ -322,9 +303,11 @@
           resetState.code = form.code;
           setForm(resetState);
           setFilter({type:'all', value:''});
+          setIsManualNumber(false); // 送出後重置回自動模式
           window.scrollTo({top:0, behavior:'smooth'});
 
-        } catch (e) { alert("錯誤: " + e.message); } 
+        } catch (e) { alert("錯誤: " + e.message);
+        } 
         finally { setProcessing(false); }
       };
 
@@ -344,7 +327,6 @@
          const dateText = formatDateZh(r.date);
          const numSuffix = r.number ? r.number.slice(-3) : "000";
          const text = `${dateText}${r.code}${numSuffix}號：${r.subject}`;
-         
          navigator.clipboard.writeText(text).then(() => {
              const btn = document.getElementById(`copy-btn-${r.id}`);
              if(btn) {
@@ -357,25 +339,20 @@
 
       const displayRecords = useMemo(() => {
         let res = [...records];
-        
         if (filter.type === 'author') res = res.filter(r => r.author === filter.value);
         if (filter.type === 'code') res = res.filter(r => r.code === filter.value);
-        
         if (filter.type === 'search') {
             const k = (filter.value || "").toLowerCase();
             const dateFilter = filter.date;
-            
             res = res.filter(r => {
                 const matchSubject = (r.subject||"").toLowerCase().includes(k) || (r.number||"").toLowerCase().includes(k);
                 const matchDate = dateFilter ? r.date === dateFilter : true;
                 return matchSubject && matchDate;
             });
         }
-
         res.sort((a, b) => {
           const numA = parseInt(a.number, 10);
           const numB = parseInt(b.number, 10);
-          
           if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
              return sortOrder === 'desc' ? numB - numA : numA - numB;
           } else {
@@ -384,7 +361,6 @@
              return sortOrder === 'desc' ? strB.localeCompare(strA) : strA.localeCompare(strB);
           }
         });
-
         return res;
       }, [records, filter, sortOrder]);
 
@@ -402,7 +378,6 @@
             
             <div className="flex-1 overflow-y-auto p-4 space-y-6">
                <button onClick={()=>{setFilter({type:'all'});setMenuOpen(false)}} className="w-full py-3 bg-slate-100 rounded-xl font-bold text-slate-700">顯示全部紀錄</button>
-               
                <div>
                  <div className="flex justify-between items-end mb-2 px-1">
                     <h3 className="text-xs font-bold text-slate-400 uppercase">發文者與預設代字</h3>
@@ -425,10 +400,10 @@
                                  {meta.codes.map(c => <option key={c} value={c}>{c}</option>)}
                                </select>
                            ) : (
-                               <span onClick={() => setEditingDefault(a)} className="cursor-pointer hover:text-blue-500 flex items-center gap-1">
+                              <span onClick={() => setEditingDefault(a)} className="cursor-pointer hover:text-blue-500 flex items-center gap-1">
                                   <i className="fas fa-link text-[10px]"></i> 
                                   {meta.authorDefaults?.[a] ? `預設: ${meta.authorDefaults[a]}` : "未設定"}
-                               </span>
+                              </span>
                            )}
                         </div>
                      </div>
@@ -449,12 +424,11 @@
               <h1 className="font-bold text-lg text-slate-800">公文系統</h1>
             </div>
             <div className="flex gap-2">
-                {/* 【新增】匯出按鈕 */}
                 <button onClick={handleExport} className="text-slate-600 text-sm font-bold bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-full active:scale-95 flex items-center gap-1">
                   <i className="fas fa-file-export"></i> 匯出
                 </button>
-                <button onClick={()=>{setForm(getInitialForm());setFilter({type:'all',value:''})}} className="text-slate-500 text-sm font-medium bg-slate-100 px-3 py-1.5 rounded-full active:scale-95">
-                  重置
+                <button onClick={()=>{setForm(getInitialForm());setFilter({type:'all',value:''});setIsManualNumber(false)}} className="text-slate-500 text-sm font-medium bg-slate-100 px-3 py-1.5 rounded-full active:scale-95">
+                   重置
                 </button>
             </div>
           </header>
@@ -470,7 +444,6 @@
                       <input type="date" className="input-ios pr-10"
                         value={form.date} onChange={e=>setForm({...form, date:e.target.value})}
                       />
-                      {/* 【修正】清除按鈕移入日曆輸入框內右側，改用簡潔的 X 圖示 */}
                       {form.date && (
                           <button 
                             onClick={()=>setForm({...form, date: ''})}
@@ -502,14 +475,35 @@
                     <datalist id="codeList">{meta.codes.map(c=><option key={c} value={c}/>)}</datalist>
                   </div>
                 </div>
+                
+                {/* 【修正】總號輸入框區域：可切換手動/自動 */}
                 <div className="space-y-1">
-                   <label className="text-xs font-bold text-slate-500 ml-1">總號 (自動)</label>
-                   <input type="text" readOnly 
-                     className="input-ios bg-slate-50 text-slate-600 font-mono font-bold text-center tracking-wider"
-                     value={form.number}
-                     placeholder="自動產生"
-                   />
+                   <label className="text-xs font-bold text-slate-500 ml-1">
+                       總號 ({isManualNumber ? "手動" : "自動"})
+                   </label>
+                   <div className="relative">
+                       <input 
+                           type="text" 
+                           readOnly={!isManualNumber} 
+                           className={`input-ios text-center font-mono font-bold tracking-wider pr-10 transition-colors ${
+                               isManualNumber 
+                               ? "bg-white text-slate-800 border-blue-400 ring-2 ring-blue-50" 
+                               : "bg-slate-50 text-slate-600"
+                           }`}
+                           value={form.number}
+                           placeholder="自動產生"
+                           onChange={e => setForm({...form, number: e.target.value})}
+                       />
+                       <button 
+                           onClick={() => setIsManualNumber(!isManualNumber)}
+                           className="absolute right-0 top-0 bottom-0 px-3 flex items-center justify-center text-slate-400 hover:text-blue-600 active:scale-95 transition-all"
+                           title={isManualNumber ? "切換為自動" : "切換為手動"}
+                       >
+                           <i className={`fas ${isManualNumber ? "fa-pen" : "fa-lock"}`}></i>
+                       </button>
+                   </div>
                 </div>
+
               </div>
 
               <div className="space-y-1">
@@ -534,22 +528,22 @@
                   <div className="flex gap-2 p-1 bg-slate-100 rounded-lg animate-fade-in">
                      {['軍官','士官','士兵'].map(r => (
                        <button key={r} onClick={()=>setForm({...form, rank:r})}
-                         className={`flex-1 py-2 text-xs rounded-md font-bold transition-all ${form.rank===r ? 'bg-indigo-600 text-white shadow-sm' : 'bg-transparent text-slate-400 hover:text-slate-600'}`}>
+                          className={`flex-1 py-2 text-xs rounded-md font-bold transition-all ${form.rank===r ? 'bg-indigo-600 text-white shadow-sm' : 'bg-transparent text-slate-400 hover:text-slate-600'}`}>
                          {r}
                        </button>
-                     ))}
+                   ))}
                   </div>
                 )}
               </div>
 
               <div className="grid grid-cols-4 gap-2 pt-2">
                  <button onClick={handleSearch} 
-                   className="col-span-1 h-12 rounded-xl border border-slate-300 text-slate-600 font-bold bg-white active:scale-95">
+                    className="col-span-1 h-12 rounded-xl border border-slate-300 text-slate-600 font-bold bg-white active:scale-95">
                    查詢
                  </button>
                  
-                 <button onClick={()=>handleSubmit(false)} disabled={!form.id} 
-                   className={`col-span-1 h-12 rounded-xl border font-bold ${form.id ? 'bg-blue-50 text-blue-600 border-blue-200':'bg-slate-50 text-slate-300 border-slate-100'}`}>
+                 <button onClick={()=>{setIsManualNumber(true);handleSubmit(false)}} disabled={!form.id} 
+                    className={`col-span-1 h-12 rounded-xl border font-bold ${form.id ? 'bg-blue-50 text-blue-600 border-blue-200':'bg-slate-50 text-slate-300 border-slate-100'}`}>
                    修改
                  </button>
                  
@@ -566,7 +560,7 @@
                    <h2 className="font-bold text-slate-800 text-lg">
                       發文紀錄 
                       {filter.type !== 'all' && <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
-                          {filter.type === 'search' ? '搜尋模式' : filter.value}
+                        {filter.type === 'search' ? '搜尋模式' : filter.value}
                       </span>}
                    </h2>
                    <button 
@@ -582,7 +576,7 @@
               </div>
               
               {displayRecords.map(r => (
-                <div key={r.id} onClick={()=>{setForm({...r}); window.scrollTo({top:0,behavior:'smooth'})}}
+                <div key={r.id} onClick={()=>{setForm({...r}); setIsManualNumber(true); window.scrollTo({top:0,behavior:'smooth'})}}
                    className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm active:bg-slate-50 transition relative overflow-hidden group">
                    
                    <div className="flex justify-between items-start mb-1">

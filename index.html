@@ -471,22 +471,6 @@
                       )}
                   </div>
                 </div>
-div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 ml-1">發文日期</label>
-                  <div className="relative">
-                      <input type="date" className="input-ios pr-10"
-                        value={form.date} onChange={e=>setForm({...form, date:e.target.value})}
-                      />
-                      {form.date && (
-                          <button 
-                            onClick={()=>setForm({...form, date: ''})}
-                            className="absolute right-0 top-0 bottom-0 px-3 flex items-center justify-center text-slate-400 hover:text-red-500"
-                          >
-                             <i className="fas fa-times"></i>
-                          </button>
-                      )}
-                  </div>
-                </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 ml-1">發文者</label>
                   <div className="select-wrapper">

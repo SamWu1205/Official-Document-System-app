@@ -438,7 +438,40 @@
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
               
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
+                                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 ml-1">發文日期</label>
+                  <div className="relative h-12">
+                      {/* 1. 顯示層：只顯示 月/日，解決換行問題 */}
+                      <div className="absolute inset-0 flex items-center px-3 border border-slate-200 rounded-xl bg-white text-slate-800 pointer-events-none">
+                         {form.date ? (
+                             <span className="text-base font-bold">
+                               {parseInt(form.date.split('-')[1])}月{parseInt(form.date.split('-')[2])}日
+                             </span>
+                         ) : (
+                             <span className="text-slate-400">請選擇日期</span>
+                         )}
+                      </div>
+
+                      {/* 2. 功能層：真正的日期輸入框 (透明，覆蓋在上方) */}
+                      <input 
+                        type="date" 
+                        className="absolute inset-0 w-full h-full opacity-0 z-10" 
+                        value={form.date} 
+                        onChange={e=>setForm({...form, date:e.target.value})}
+                      />
+
+                      {/* 3. 清除按鈕 (層級最高，確保按得到) */}
+                      {form.date && (
+                          <button 
+                            onClick={()=>setForm({...form, date: ''})}
+                            className="absolute right-0 top-0 bottom-0 px-3 flex items-center justify-center text-slate-400 hover:text-red-500 z-20"
+                          >
+                             <i className="fas fa-times"></i>
+                          </button>
+                      )}
+                  </div>
+                </div>
+div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 ml-1">發文日期</label>
                   <div className="relative">
                       <input type="date" className="input-ios pr-10"

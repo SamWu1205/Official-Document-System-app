@@ -6,7 +6,7 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
   />
-  <title>公文發文系統 (完整版)</title>
+  <title>公文發文系統 (側邊欄整合版)</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -65,6 +65,12 @@
       pointer-events: none;
     }
 
+    /* 側邊欄動畫 */
+    .sidebar { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    .sidebar-closed { transform: translateX(-100%); }
+    .sidebar-open { transform: translateX(0); }
+    .overlay { transition: opacity 0.3s ease; }
+
     @keyframes copySuccess {
       0% { transform: scale(1); }
       50% { transform: scale(1.2); color: #10b981; }
@@ -101,10 +107,13 @@
     const db = firebase.firestore();
     const { useState, useEffect, useMemo } = React;
 
-    const formatDateZh = (dateStr) => {
+    // 日期格式化 (隱藏年份)
+    const formatDateNoYear = (dateStr) => {
        if(!dateStr) return "";
-       const d = new Date(dateStr);
-       return `${d.getMonth() + 1}月${d.getDate()}日`;
+       const parts = dateStr.split('-');
+       if(parts.length < 3) return dateStr;
+       // parts[1] 是月, parts[2] 是日
+       return `${parseInt(parts[1], 10)}月${parseInt(parts[2], 10)}日`;
     };
 
     function App() {
@@ -116,6 +125,7 @@
       const [processing, setProcessing] = useState(false);
 
       // --- 視圖控制狀態 ---
+      const [menuOpen, setMenuOpen] = useState(false); // 側邊欄開關
       const [currentView, setCurrentView] = useState("home"); // home, docs, personnel
       const [docTab, setDocTab] = useState("人勤令"); // 人勤令, 人職令
       
@@ -158,7 +168,7 @@
 
         const unsubRec = userRef.collection("records")
           .orderBy("createdAt", "desc")
-          .limit(200) // 稍微增加載入數量以便公文系統查詢
+          .limit(200) 
           .onSnapshot(snap => {
             const data = snap.docs.map(d => {
                 const docData = d.data();
@@ -273,13 +283,13 @@
           setFilter({type:'all', value:''});
           setIsManualNumber(false);
           window.scrollTo({top:0, behavior:'smooth'});
-          alert("儲存成功");
+          // alert("儲存成功"); 
         } catch (e) { alert("錯誤: " + e.message); } 
         finally { setProcessing(false); }
       };
 
       const handleDelete = async (id) => {
-        if(!id || !confirm("確定刪除?")) return;
+        if(!id || !confirm("確定刪除此紀錄?")) return;
         try {
             await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete();
             if(form.id === id) setForm(getInitialForm());
@@ -301,7 +311,7 @@
       };
 
       const copyToClipboard = (r) => {
-         const dateText = formatDateZh(r.date);
+         const dateText = formatDateNoYear(r.date); // 複製時也移除年份
          const numSuffix = r.number ? r.number.slice(-3) : "000";
          const text = `${dateText}${r.code}${numSuffix}號：${r.subject}`;
          navigator.clipboard.writeText(text).then(() => {
@@ -314,7 +324,7 @@
          });
       };
 
-      // --- 新增功能：公文系統分號編輯 ---
+      // --- 公文系統分號編輯 ---
       const handleSubNumberEdit = (r) => {
         setEditingSubNumId(r.id);
         setEditingSubNumVal(r.subNumber || "");
@@ -330,7 +340,7 @@
         } catch(e) { alert("更新失敗"); }
       };
 
-      // --- 新增功能：人員管理 ---
+      // --- 人員管理 ---
       const addAuthor = async () => {
         if(!newAuthorName.trim()) return;
         try {
@@ -353,7 +363,6 @@
       // --- 資料過濾 ---
       const displayRecords = useMemo(() => {
         let res = [...records];
-        // 首頁的過濾邏輯
         if (filter.type === 'search') {
             const k = (filter.value || "").toLowerCase();
             res = res.filter(r => (r.subject||"").toLowerCase().includes(k) || (r.number||"").toLowerCase().includes(k));
@@ -367,7 +376,6 @@
       }, [records, filter, sortOrder]);
 
       const docSystemRecords = useMemo(() => {
-        // 公文系統的過濾邏輯
         return records.filter(r => r.docType === docTab);
       }, [records, docTab]);
 
@@ -378,30 +386,67 @@
       return (
         <div className="min-h-screen flex flex-col bg-slate-50 pb-20">
           
-          {/* 頂部導航 */}
-          <div className="sticky top-0 z-50 bg-white/90 backdrop-blur shadow-sm border-b border-slate-100 px-4 h-14 flex items-center justify-between">
-            <h1 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-              <i className="fas fa-file-signature text-blue-600"></i> 公文系統
-            </h1>
-            <div className="flex gap-2">
-               {currentView === 'home' && (
-                 <button onClick={handleExport} className="text-xs bg-slate-100 px-3 py-1.5 rounded-full font-bold text-slate-600">匯出</button>
-               )}
+          {/* 側邊欄遮罩 */}
+          {menuOpen && (
+            <div 
+              className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm overlay fade-in" 
+              onClick={() => setMenuOpen(false)} 
+            />
+          )}
+
+          {/* 左側側邊欄 (導航核心) */}
+          <div className={`fixed inset-y-0 left-0 w-[80%] max-w-[280px] bg-white shadow-2xl z-50 sidebar flex flex-col ${menuOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
+            <div className="bg-slate-900 text-white p-6 pt-12">
+               <h2 className="font-bold text-xl">功能選單</h2>
+               <div className="text-slate-400 text-xs mt-1">公文管理系統 Pro</div>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+               {/* 選單項目 */}
+               <button onClick={()=>{setCurrentView('home');setMenuOpen(false)}} 
+                 className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition ${currentView==='home' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
+                 <i className="fas fa-pen-nib w-6 text-center"></i> 填寫表單 (首頁)
+               </button>
+               
+               <button onClick={()=>{setCurrentView('docs');setMenuOpen(false)}} 
+                 className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition ${currentView==='docs' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
+                 <i className="fas fa-folder-open w-6 text-center"></i> 公文系統
+               </button>
+               
+               <button onClick={()=>{setCurrentView('personnel');setMenuOpen(false)}} 
+                 className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition ${currentView==='personnel' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
+                 <i className="fas fa-users-cog w-6 text-center"></i> 人員設定
+               </button>
+
+               <div className="border-t border-slate-100 my-2"></div>
+               
+               <button onClick={handleExport} className="w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 text-slate-600 hover:bg-slate-50">
+                  <i className="fas fa-file-export w-6 text-center"></i> 匯出 Excel
+               </button>
             </div>
           </div>
 
-          {/* 視圖切換 */}
-          <div className="p-2 mx-2 mt-2 bg-white rounded-xl shadow-sm flex mb-4">
-            <button onClick={()=>setCurrentView('home')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${currentView==='home'?'bg-blue-600 text-white':'text-slate-400'}`}>
-              <i className="fas fa-pen-nib mr-1"></i> 填寫
-            </button>
-            <button onClick={()=>setCurrentView('docs')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${currentView==='docs'?'bg-blue-600 text-white':'text-slate-400'}`}>
-              <i className="fas fa-folder-open mr-1"></i> 公文
-            </button>
-            <button onClick={()=>setCurrentView('personnel')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${currentView==='personnel'?'bg-blue-600 text-white':'text-slate-400'}`}>
-              <i className="fas fa-users-cog mr-1"></i> 人員
-            </button>
-          </div>
+          {/* 頂部 Header */}
+          <header className="sticky top-0 z-30 bg-white/90 backdrop-blur shadow-sm border-b border-slate-100 px-4 h-14 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button onClick={() => setMenuOpen(true)} className="text-slate-700 text-xl p-1 active:scale-95 transition">
+                <i className="fas fa-bars"></i>
+              </button>
+              <h1 className="font-bold text-lg text-slate-800">
+                {currentView === 'home' && '填寫表單'}
+                {currentView === 'docs' && '公文系統'}
+                {currentView === 'personnel' && '人員設定'}
+              </h1>
+            </div>
+            
+            {/* 首頁右上角的重置按鈕 */}
+            {currentView === 'home' && (
+              <button onClick={()=>{setForm(getInitialForm());setFilter({type:'all',value:''});setIsManualNumber(false)}} 
+                className="text-slate-400 hover:text-slate-600 text-sm font-medium px-2 py-1">
+                 重置
+              </button>
+            )}
+          </header>
 
           {/* --- 視圖 1: 首頁 (填寫表單) --- */}
           {currentView === 'home' && (
@@ -411,7 +456,15 @@
                  <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 ml-1">發文日期</label>
-                      <input type="date" className="input-ios" value={form.date} onChange={e=>setForm({...form, date:e.target.value})} />
+                      <div className="relative h-12">
+                          {/* 顯示層 (隱藏年份) */}
+                          <div className="absolute inset-0 flex items-center px-3 border border-slate-200 rounded-xl bg-white text-slate-800 pointer-events-none">
+                             {form.date ? <span className="text-base font-bold">{formatDateNoYear(form.date)}</span> : <span className="text-slate-400">請選擇</span>}
+                          </div>
+                          {/* 實際輸入層 (透明) */}
+                          <input type="date" className="absolute inset-0 w-full h-full opacity-0 z-10" 
+                            value={form.date} onChange={e=>setForm({...form, date:e.target.value})} />
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 ml-1">發文者</label>
@@ -448,7 +501,7 @@
                       value={form.subject} onChange={e=>setForm({...form, subject:e.target.value})} placeholder="輸入內容..."></textarea>
                  </div>
 
-                 {/* 類別選擇 - 更新選項 */}
+                 {/* 類別選擇 */}
                  <div className="pt-2 space-y-3">
                     <div className="flex gap-2 p-1 bg-slate-100 rounded-lg overflow-x-auto">
                        {['一般公文','人勤令','人職令'].map(t => (
@@ -485,7 +538,7 @@
                  </div>
               </div>
 
-              {/* 簡易列表 (只顯示搜尋結果或最近幾筆) */}
+              {/* 簡易列表 (含刪除按鈕) */}
               <div className="space-y-4">
                  <h2 className="font-bold text-slate-800 text-lg px-2">
                     {filter.type==='search' ? `搜尋: ${filter.value}` : '最近紀錄'}
@@ -496,13 +549,24 @@
                       className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm active:bg-slate-50 transition relative overflow-hidden group">
                       <div className="flex justify-between items-start mb-1">
                          <span className="font-mono font-bold text-blue-600 text-lg">#{r.number}</span>
-                         <div className="text-xs text-slate-400">{r.date}</div>
+                         {/* 列表中的日期：隱藏年份 */}
+                         <div className="text-xs text-slate-400">{formatDateNoYear(r.date)}</div>
                       </div>
                       <div className="text-base font-bold text-slate-800 mb-2 line-clamp-1">{r.subject}</div>
                       <div className="flex items-center gap-2 text-xs text-slate-500">
                           <span className="bg-slate-100 px-2 py-1 rounded">{r.author}</span>
                           {r.docType!=='一般公文' && <span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded">{r.docType} {r.subNumber}</span>}
-                          <button onClick={(e)=>{e.stopPropagation();copyToClipboard(r)}} id={`copy-btn-${r.id}`} className="ml-auto px-2 py-1 bg-emerald-50 text-emerald-600 rounded border border-emerald-100"><i className="fas fa-copy"></i></button>
+                          
+                          <div className="ml-auto flex gap-2">
+                              {/* 複製按鈕 */}
+                              <button onClick={(e)=>{e.stopPropagation();copyToClipboard(r)}} id={`copy-btn-${r.id}`} className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded border border-emerald-100">
+                                <i className="fas fa-copy"></i>
+                              </button>
+                              {/* 刪除按鈕 (這裡原本遺失了，現在補回來) */}
+                              <button onClick={(e)=>{e.stopPropagation();handleDelete(r.id)}} className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 rounded border border-red-100">
+                                <i className="fas fa-trash-alt"></i>
+                              </button>
+                          </div>
                       </div>
                    </div>
                  ))}
@@ -523,7 +587,8 @@
                     <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500">
                        <div className="flex justify-between items-start">
                           <div>
-                             <div className="text-xs text-slate-400 mb-1">{r.date}</div>
+                             {/* 公文系統的日期：隱藏年份 */}
+                             <div className="text-xs text-slate-400 mb-1">{formatDateNoYear(r.date)}</div>
                              <h3 className="font-bold text-slate-800 text-lg mb-1">{r.subject}</h3>
                              <div className="text-sm text-slate-600 bg-slate-100 inline-block px-2 py-0.5 rounded">{r.author} ({r.rank})</div>
                           </div>

@@ -6,7 +6,7 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
   />
-  <title>公文發文系統 (側邊欄整合版)</title>
+  <title>公文發文系統 (雲端同步+匯入版)</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -44,6 +44,7 @@
       border: 1px solid #e2e8f0;
       background-color: #fff;
       appearance: none;
+      transition: all 0.2s;
     }
     .input-ios:focus {
       border-color: #3b82f6;
@@ -78,9 +79,8 @@
     }
     .animate-copy { animation: copySuccess 0.3s ease-out; }
     
-    /* 簡單的淡入動畫 */
-    .fade-in { animation: fadeIn 0.3s ease-in-out; }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .fade-in { animation: fadeIn 0.4s ease-in-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
   </style>
 </head>
 <body>
@@ -105,35 +105,114 @@
 
     const auth = firebase.auth();
     const db = firebase.firestore();
-    const { useState, useEffect, useMemo } = React;
+    const { useState, useEffect, useMemo, useRef } = React;
 
     // 日期格式化 (隱藏年份)
     const formatDateNoYear = (dateStr) => {
        if(!dateStr) return "";
        const parts = dateStr.split('-');
        if(parts.length < 3) return dateStr;
-       // parts[1] 是月, parts[2] 是日
        return `${parseInt(parts[1], 10)}月${parseInt(parts[2], 10)}日`;
+    };
+
+    // --- 登入畫面組件 ---
+    const LoginScreen = () => {
+      const [isRegister, setIsRegister] = useState(false);
+      const [email, setEmail] = useState("");
+      const [password, setPassword] = useState("");
+      const [error, setError] = useState("");
+      const [loading, setLoading] = useState(false);
+
+      const handleAuth = async (e) => {
+        e.preventDefault();
+        setError("");
+        setLoading(true);
+        try {
+          if (isRegister) {
+            await auth.createUserWithEmailAndPassword(email, password);
+          } else {
+            await auth.signInWithEmailAndPassword(email, password);
+          }
+        } catch (err) {
+          console.error(err);
+          let msg = "發生錯誤";
+          if(err.code === 'auth/email-already-in-use') msg = "此 Email 已被註冊";
+          else if(err.code === 'auth/wrong-password') msg = "密碼錯誤";
+          else if(err.code === 'auth/user-not-found') msg = "找不到此帳號";
+          else if(err.code === 'auth/weak-password') msg = "密碼太弱 (至少6字)";
+          else if(err.code === 'auth/invalid-email') msg = "Email 格式錯誤";
+          setError(msg);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+          <div className="bg-white w-full max-w-sm p-8 rounded-2xl shadow-xl fade-in">
+             <div className="text-center mb-8">
+               <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto flex items-center justify-center text-white text-3xl shadow-lg mb-4">
+                 <i className="fas fa-file-signature"></i>
+               </div>
+               <h1 className="text-2xl font-bold text-slate-800">公文系統 Pro</h1>
+               <p className="text-slate-400 text-sm mt-1">
+                 {isRegister ? "建立您的雲端帳戶" : "登入以同步資料"}
+               </p>
+             </div>
+
+             <form onSubmit={handleAuth} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">Email</label>
+                  <input type="email" required className="input-ios" 
+                    value={email} onChange={e=>setEmail(e.target.value)} placeholder="name@example.com" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">密碼</label>
+                  <input type="password" required className="input-ios" 
+                    value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" />
+                </div>
+
+                {error && <div className="text-red-500 text-sm bg-red-50 p-2 rounded-lg text-center"><i className="fas fa-exclamation-circle mr-1"></i>{error}</div>}
+
+                <button type="submit" disabled={loading}
+                  className="w-full bg-slate-900 text-white font-bold h-12 rounded-xl shadow-lg active:scale-95 transition flex items-center justify-center">
+                  {loading ? <i className="fas fa-circle-notch fa-spin"></i> : (isRegister ? "註冊帳號" : "登入")}
+                </button>
+             </form>
+
+             <div className="mt-6 text-center">
+               <button onClick={()=>setIsRegister(!isRegister)} className="text-sm text-blue-600 font-bold hover:underline">
+                 {isRegister ? "已有帳號？返回登入" : "還沒帳號？立即註冊"}
+               </button>
+             </div>
+          </div>
+        </div>
+      );
     };
 
     function App() {
       // --- 核心狀態 ---
       const [user, setUser] = useState(null);
+      const [authChecking, setAuthChecking] = useState(true); 
+      
       const [records, setRecords] = useState([]);
       const [meta, setMeta] = useState({ authors: [], codes: [], authorDefaults: {} });
-      const [loading, setLoading] = useState(true);
+      const [loadingData, setLoadingData] = useState(false);
       const [processing, setProcessing] = useState(false);
 
       // --- 視圖控制狀態 ---
-      const [menuOpen, setMenuOpen] = useState(false); // 側邊欄開關
-      const [currentView, setCurrentView] = useState("home"); // home, docs, personnel
-      const [docTab, setDocTab] = useState("人勤令"); // 人勤令, 人職令
+      const [menuOpen, setMenuOpen] = useState(false); 
+      const [currentView, setCurrentView] = useState("home"); 
+      const [docTab, setDocTab] = useState("人勤令"); 
       
       // --- 編輯狀態 ---
-      const [editingDefault, setEditingDefault] = useState(null); // 人員預設代字編輯
-      const [editingSubNumId, setEditingSubNumId] = useState(null); // 公文分號編輯 ID
-      const [editingSubNumVal, setEditingSubNumVal] = useState(""); // 公文分號編輯數值
-      const [newAuthorName, setNewAuthorName] = useState(""); // 新增人員輸入框
+      const [editingDefault, setEditingDefault] = useState(null); 
+      const [editingSubNumId, setEditingSubNumId] = useState(null); 
+      const [editingSubNumVal, setEditingSubNumVal] = useState(""); 
+      const [newAuthorName, setNewAuthorName] = useState(""); 
+
+      // --- 檔案上傳 Ref ---
+      const fileInputRef = useRef(null);
 
       // --- 表單狀態 ---
       const getInitialForm = () => ({
@@ -152,23 +231,28 @@
       const [filter, setFilter] = useState({ type: 'all', value: '' });
       const [sortOrder, setSortOrder] = useState('desc');
 
-      // --- 初始化 ---
+      // --- Auth 監聽 ---
       useEffect(() => {
-        auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).then(() => {
-            auth.onAuthStateChanged(u => {
-              if (u) setUser(u);
-              else auth.signInAnonymously().catch(console.error);
-            });
-          });
+        const unsubscribe = auth.onAuthStateChanged((u) => {
+          setUser(u);
+          setAuthChecking(false);
+        });
+        return () => unsubscribe();
       }, []);
 
+      // --- 資料監聽 ---
       useEffect(() => {
-        if (!user) return;
+        if (!user) {
+          setRecords([]);
+          return;
+        }
+        
+        setLoadingData(true);
         const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
 
         const unsubRec = userRef.collection("records")
           .orderBy("createdAt", "desc")
-          .limit(200) 
+          .limit(300) 
           .onSnapshot(snap => {
             const data = snap.docs.map(d => {
                 const docData = d.data();
@@ -176,7 +260,7 @@
                 return { id: d.id, ...docData };
             });
             setRecords(data);
-            setLoading(false);
+            setLoadingData(false);
           });
 
         const unsubMeta = userRef.collection("metadata").doc("general")
@@ -188,7 +272,7 @@
         return () => { unsubRec(); unsubMeta(); };
       }, [user]);
 
-      // --- 自動跳號邏輯 ---
+      // --- 自動跳號 ---
       const nextNumbers = useMemo(() => {
         const today = new Date();
         const rocYear = today.getFullYear() - 1911;
@@ -243,7 +327,7 @@
 
       const handleSubmit = async (forceNew = false) => {
         if (!user) return;
-        if (!form.date || !form.author || !form.code || !form.subject) return alert("資料不完整：日期、發文者、代字、主旨為必填");
+        if (!form.date || !form.author || !form.code || !form.subject) return alert("資料不完整");
         
         setProcessing(true);
         try {
@@ -283,13 +367,12 @@
           setFilter({type:'all', value:''});
           setIsManualNumber(false);
           window.scrollTo({top:0, behavior:'smooth'});
-          // alert("儲存成功"); 
         } catch (e) { alert("錯誤: " + e.message); } 
         finally { setProcessing(false); }
       };
 
       const handleDelete = async (id) => {
-        if(!id || !confirm("確定刪除此紀錄?")) return;
+        if(!id || !confirm("確定刪除?")) return;
         try {
             await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete();
             if(form.id === id) setForm(getInitialForm());
@@ -306,12 +389,86 @@
           const wb = XLSX.utils.book_new();
           const ws = XLSX.utils.json_to_sheet(exportData);
           XLSX.utils.book_append_sheet(wb, ws, "紀錄");
-          XLSX.writeFile(wb, `公文_${new Date().toISOString().split('T')[0]}.xlsx`);
+          XLSX.writeFile(wb, `公文備份_${new Date().toISOString().split('T')[0]}.xlsx`);
         } catch (e) { alert("匯出失敗"); }
       };
 
+      // --- 匯入 Excel 功能 ---
+      const handleImport = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if(!confirm("確定要匯入此 Excel 嗎？\n請確認這是此系統匯出的格式，以免資料錯誤。")) {
+          e.target.value = null; 
+          return;
+        }
+
+        setProcessing(true);
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          try {
+            const data = evt.target.result;
+            const workbook = XLSX.read(data, { type: 'binary' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            const json = XLSX.utils.sheet_to_json(worksheet);
+
+            if (json.length === 0) throw new Error("Excel 內無資料");
+
+            const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
+            const batchSize = 10; 
+            let successCount = 0;
+            const newAuthors = new Set();
+            const newCodes = new Set();
+
+            // 逐筆寫入 (為了安全起見不使用 batch，避免單筆錯誤導致全部失敗)
+            for (let i = 0; i < json.length; i++) {
+               const row = json[i];
+               // 簡單的欄位對應
+               const record = {
+                 number: String(row["總號"] || ""),
+                 date: row["日期"] || new Date().toISOString().split("T")[0],
+                 author: row["發文者"] || "",
+                 code: row["代字"] || "",
+                 subject: row["主旨"] || "",
+                 subNumber: String(row["分號"] || ""),
+                 docType: row["種類"] || "一般公文",
+                 rank: row["階級"] || "軍官",
+                 createdAt: new Date().toISOString(),
+                 updatedAt: new Date().toISOString()
+               };
+
+               if(record.number && record.subject) {
+                 await userRef.collection("records").add(record);
+                 successCount++;
+                 if(record.author) newAuthors.add(record.author);
+                 if(record.code) newCodes.add(record.code);
+               }
+            }
+
+            // 更新人員與代字庫
+            if (newAuthors.size > 0 || newCodes.size > 0) {
+              await userRef.collection("metadata").doc("general").set({
+                 authors: firebase.firestore.FieldValue.arrayUnion(...Array.from(newAuthors)),
+                 codes: firebase.firestore.FieldValue.arrayUnion(...Array.from(newCodes))
+              }, { merge: true });
+            }
+
+            alert(`匯入完成！成功匯入 ${successCount} 筆資料。`);
+            window.location.reload(); // 重整頁面以確保資料顯示正確
+          } catch (err) {
+            console.error(err);
+            alert("匯入失敗：" + err.message);
+          } finally {
+            setProcessing(false);
+            e.target.value = null; // 重置 input
+          }
+        };
+        reader.readAsBinaryString(file);
+      };
+
       const copyToClipboard = (r) => {
-         const dateText = formatDateNoYear(r.date); // 複製時也移除年份
+         const dateText = formatDateNoYear(r.date); 
          const numSuffix = r.number ? r.number.slice(-3) : "000";
          const text = `${dateText}${r.code}${numSuffix}號：${r.subject}`;
          navigator.clipboard.writeText(text).then(() => {
@@ -324,7 +481,6 @@
          });
       };
 
-      // --- 公文系統分號編輯 ---
       const handleSubNumberEdit = (r) => {
         setEditingSubNumId(r.id);
         setEditingSubNumVal(r.subNumber || "");
@@ -340,7 +496,6 @@
         } catch(e) { alert("更新失敗"); }
       };
 
-      // --- 人員管理 ---
       const addAuthor = async () => {
         if(!newAuthorName.trim()) return;
         try {
@@ -360,7 +515,10 @@
         } catch(e) { alert("移除失敗"); }
       };
 
-      // --- 資料過濾 ---
+      const handleLogout = () => {
+        if(confirm("確定登出?")) auth.signOut();
+      };
+
       const displayRecords = useMemo(() => {
         let res = [...records];
         if (filter.type === 'search') {
@@ -379,14 +537,13 @@
         return records.filter(r => r.docType === docTab);
       }, [records, docTab]);
 
-      // --- 渲染組件 ---
-
-      if (loading) return <div className="h-screen flex items-center justify-center text-slate-400">系統載入中...</div>;
+      // --- 條件渲染 ---
+      if (authChecking) return <div className="h-screen flex items-center justify-center text-slate-400">載入中...</div>;
+      if (!user) return <LoginScreen />;
 
       return (
         <div className="min-h-screen flex flex-col bg-slate-50 pb-20">
           
-          {/* 側邊欄遮罩 */}
           {menuOpen && (
             <div 
               className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm overlay fade-in" 
@@ -394,15 +551,14 @@
             />
           )}
 
-          {/* 左側側邊欄 (導航核心) */}
+          {/* 左側側邊欄 */}
           <div className={`fixed inset-y-0 left-0 w-[80%] max-w-[280px] bg-white shadow-2xl z-50 sidebar flex flex-col ${menuOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
             <div className="bg-slate-900 text-white p-6 pt-12">
                <h2 className="font-bold text-xl">功能選單</h2>
-               <div className="text-slate-400 text-xs mt-1">公文管理系統 Pro</div>
+               <div className="text-slate-400 text-xs mt-1 truncate">{user.email}</div>
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
-               {/* 選單項目 */}
                <button onClick={()=>{setCurrentView('home');setMenuOpen(false)}} 
                  className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition ${currentView==='home' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
                  <i className="fas fa-pen-nib w-6 text-center"></i> 首頁
@@ -423,6 +579,20 @@
                <button onClick={handleExport} className="w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 text-slate-600 hover:bg-slate-50">
                   <i className="fas fa-file-export w-6 text-center"></i> 匯出 Excel
                </button>
+               
+               {/* 匯入 Excel 按鈕 */}
+               <div className="relative">
+                 <input type="file" ref={fileInputRef} onChange={handleImport} accept=".xlsx, .xls" className="hidden" />
+                 <button onClick={()=>fileInputRef.current.click()} className="w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 text-slate-600 hover:bg-slate-50">
+                    <i className="fas fa-file-import w-6 text-center"></i> 匯入 Excel
+                 </button>
+               </div>
+            </div>
+            
+            <div className="p-4 border-t border-slate-100">
+               <button onClick={handleLogout} className="w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 text-red-500 hover:bg-red-50 transition">
+                  <i className="fas fa-sign-out-alt w-6 text-center"></i> 登出
+               </button>
             </div>
           </div>
 
@@ -439,7 +609,6 @@
               </h1>
             </div>
             
-            {/* 首頁右上角的重置按鈕 */}
             {currentView === 'home' && (
               <button onClick={()=>{setForm(getInitialForm());setFilter({type:'all',value:''});setIsManualNumber(false)}} 
                 className="text-slate-400 hover:text-slate-600 text-sm font-medium px-2 py-1">
@@ -448,20 +617,17 @@
             )}
           </header>
 
-          {/* --- 視圖 1: 首頁 (填寫表單) --- */}
+          {/* --- 視圖 1: 首頁 --- */}
           {currentView === 'home' && (
             <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-5 fade-in">
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
-                 {/* 表單內容 */}
                  <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-500 ml-1">發文日期</label>
                       <div className="relative h-12">
-                          {/* 顯示層 (隱藏年份) */}
                           <div className="absolute inset-0 flex items-center px-3 border border-slate-200 rounded-xl bg-white text-slate-800 pointer-events-none">
                              {form.date ? <span className="text-base font-bold">{formatDateNoYear(form.date)}</span> : <span className="text-slate-400">請選擇</span>}
                           </div>
-                          {/* 實際輸入層 (透明) */}
                           <input type="date" className="absolute inset-0 w-full h-full opacity-0 z-10" 
                             value={form.date} onChange={e=>setForm({...form, date:e.target.value})} />
                       </div>
@@ -501,7 +667,6 @@
                       value={form.subject} onChange={e=>setForm({...form, subject:e.target.value})} placeholder="輸入內容..."></textarea>
                  </div>
 
-                 {/* 類別選擇 */}
                  <div className="pt-2 space-y-3">
                     <div className="flex gap-2 p-1 bg-slate-100 rounded-lg overflow-x-auto">
                        {['一般公文','人勤令','人職令'].map(t => (
@@ -521,7 +686,6 @@
                     )}
                  </div>
 
-                 {/* 按鈕區 */}
                  <div className="grid grid-cols-4 gap-2 pt-2">
                     <button onClick={()=>{
                         const k = prompt("輸入關鍵字查詢");
@@ -538,18 +702,17 @@
                  </div>
               </div>
 
-              {/* 簡易列表 (含刪除按鈕) */}
               <div className="space-y-4">
                  <h2 className="font-bold text-slate-800 text-lg px-2">
                     {filter.type==='search' ? `搜尋: ${filter.value}` : '最近紀錄'}
                     {filter.type==='search' && <button onClick={()=>setFilter({type:'all'})} className="ml-2 text-xs text-blue-500">清除</button>}
                  </h2>
-                 {displayRecords.slice(0, 20).map(r => (
+                 {loadingData && <div className="text-center text-slate-400 py-4">讀取資料中...</div>}
+                 {!loadingData && displayRecords.slice(0, 20).map(r => (
                    <div key={r.id} onClick={()=>{setForm({...r}); setIsManualNumber(true); window.scrollTo({top:0,behavior:'smooth'})}}
                       className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm active:bg-slate-50 transition relative overflow-hidden group">
                       <div className="flex justify-between items-start mb-1">
                          <span className="font-mono font-bold text-blue-600 text-lg">#{r.number}</span>
-                         {/* 列表中的日期：隱藏年份 */}
                          <div className="text-xs text-slate-400">{formatDateNoYear(r.date)}</div>
                       </div>
                       <div className="text-base font-bold text-slate-800 mb-2 line-clamp-1">{r.subject}</div>
@@ -558,11 +721,9 @@
                           {r.docType!=='一般公文' && <span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded">{r.docType} {r.subNumber}</span>}
                           
                           <div className="ml-auto flex gap-2">
-                              {/* 複製按鈕 */}
                               <button onClick={(e)=>{e.stopPropagation();copyToClipboard(r)}} id={`copy-btn-${r.id}`} className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded border border-emerald-100">
                                 <i className="fas fa-copy"></i>
                               </button>
-                              {/* 刪除按鈕 (這裡原本遺失了，現在補回來) */}
                               <button onClick={(e)=>{e.stopPropagation();handleDelete(r.id)}} className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 rounded border border-red-100">
                                 <i className="fas fa-trash-alt"></i>
                               </button>
@@ -570,11 +731,12 @@
                       </div>
                    </div>
                  ))}
+                 {!loadingData && displayRecords.length === 0 && <div className="text-center text-slate-400 py-8">尚無資料</div>}
               </div>
             </main>
           )}
 
-          {/* --- 視圖 2: 公文系統 (人勤令/人職令) --- */}
+          {/* --- 視圖 2: 公文系統 --- */}
           {currentView === 'docs' && (
             <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-4 fade-in">
                <div className="flex bg-slate-200 p-1 rounded-xl">
@@ -587,13 +749,11 @@
                     <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500">
                        <div className="flex justify-between items-start">
                           <div>
-                             {/* 公文系統的日期：隱藏年份 */}
                              <div className="text-xs text-slate-400 mb-1">{formatDateNoYear(r.date)}</div>
                              <h3 className="font-bold text-slate-800 text-lg mb-1">{r.subject}</h3>
                              <div className="text-sm text-slate-600 bg-slate-100 inline-block px-2 py-0.5 rounded">{r.author} ({r.rank})</div>
                           </div>
                           
-                          {/* 分號編輯區 */}
                           <div className="text-right pl-2">
                              <div className="text-[10px] text-slate-400 mb-1">分號</div>
                              {editingSubNumId === r.id ? (

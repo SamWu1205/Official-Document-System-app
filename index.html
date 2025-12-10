@@ -9,7 +9,7 @@
   <title>業務管理系統</title>
   <link rel="icon" href="./logo.jpg" />
   <link rel="apple-touch-icon" href="./logo.jpg" />
-  
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
@@ -83,6 +83,12 @@
     
     .fade-in { animation: fadeIn 0.4s ease-in-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* 點狀背景圖案 (仿筆記本) */
+    .bg-dot-pattern {
+      background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
   </style>
 </head>
 <body>
@@ -109,12 +115,24 @@
     const db = firebase.firestore();
     const { useState, useEffect, useMemo, useRef } = React;
 
-    // 日期格式化 (隱藏年份)
+    // 日期格式化
     const formatDateNoYear = (dateStr) => {
        if(!dateStr) return "";
        const parts = dateStr.split('-');
        if(parts.length < 3) return dateStr;
        return `${parseInt(parts[1], 10)}月${parseInt(parts[2], 10)}日`;
+    };
+
+    // 計算剩餘天數
+    const getDaysRemaining = (endDateStr) => {
+      if (!endDateStr) return null;
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const end = new Date(endDateStr);
+      end.setHours(0,0,0,0);
+      const diffTime = end - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays;
     };
 
     // --- 登入畫面組件 ---
@@ -136,12 +154,11 @@
             await auth.signInWithEmailAndPassword(email, password);
           }
         } catch (err) {
-          console.error(err);
           let msg = "發生錯誤";
           if(err.code === 'auth/email-already-in-use') msg = "此 Email 已被註冊";
           else if(err.code === 'auth/wrong-password') msg = "密碼錯誤";
           else if(err.code === 'auth/user-not-found') msg = "找不到此帳號";
-          else if(err.code === 'auth/weak-password') msg = "密碼太弱 (至少6字)";
+          else if(err.code === 'auth/weak-password') msg = "密碼太弱";
           else if(err.code === 'auth/invalid-email') msg = "Email 格式錯誤";
           setError(msg);
         } finally {
@@ -197,26 +214,42 @@
       const [user, setUser] = useState(null);
       const [authChecking, setAuthChecking] = useState(true); 
       
-      const [records, setRecords] = useState([]);
+      const [records, setRecords] = useState([]); // 公文紀錄
+      const [tasks, setTasks] = useState([]); // 工作管制紀錄
       const [meta, setMeta] = useState({ authors: [], codes: [], authorDefaults: {} });
       const [loadingData, setLoadingData] = useState(false);
       const [processing, setProcessing] = useState(false);
 
-      // --- 視圖控制狀態 ---
+      // --- 視圖控制 ---
       const [menuOpen, setMenuOpen] = useState(false); 
-      const [currentView, setCurrentView] = useState("home"); 
+      const [currentView, setCurrentView] = useState("home"); // home, docs, tasks, personnel
       const [docTab, setDocTab] = useState("人勤令"); 
       
-      // --- 編輯狀態 ---
+      // --- 公文編輯狀態 ---
       const [editingDefault, setEditingDefault] = useState(null); 
       const [editingSubNumId, setEditingSubNumId] = useState(null); 
       const [editingSubNumVal, setEditingSubNumVal] = useState(""); 
       const [newAuthorName, setNewAuthorName] = useState(""); 
 
-      // --- 檔案上傳 Ref ---
+      // --- 工作管制狀態 ---
+      const [showTaskModal, setShowTaskModal] = useState(false);
+      const [taskFilter, setTaskFilter] = useState("全部"); // 全部, 急件, 一般, 交辦
+      const [taskSearch, setTaskSearch] = useState("");
+      
+      const getInitialTaskForm = () => ({
+         title: "",
+         type: "行政", // 業務種類預設
+         delegator: "", // 委託人
+         priority: "一般", // 急件, 一般, 交辦
+         startDate: new Date().toISOString().split("T")[0],
+         endDate: new Date().toISOString().split("T")[0],
+         notes: ""
+      });
+      const [taskForm, setTaskForm] = useState(getInitialTaskForm());
+
       const fileInputRef = useRef(null);
 
-      // --- 表單狀態 ---
+      // --- 公文表單狀態 ---
       const getInitialForm = () => ({
         id: null,
         date: new Date().toISOString().split("T")[0],
@@ -246,22 +279,28 @@
       useEffect(() => {
         if (!user) {
           setRecords([]);
+          setTasks([]);
           return;
         }
         
         setLoadingData(true);
         const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
 
+        // 監聽公文
         const unsubRec = userRef.collection("records")
           .orderBy("createdAt", "desc")
           .limit(300) 
           .onSnapshot(snap => {
-            const data = snap.docs.map(d => {
-                const docData = d.data();
-                if ('id' in docData) delete docData.id; 
-                return { id: d.id, ...docData };
-            });
+            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             setRecords(data);
+          });
+
+        // 監聽工作管制 (新)
+        const unsubTasks = userRef.collection("tasks")
+          .orderBy("createdAt", "desc")
+          .onSnapshot(snap => {
+            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setTasks(data);
             setLoadingData(false);
           });
 
@@ -271,10 +310,10 @@
             else userRef.collection("metadata").doc("general").set({ authors: [], codes: [], authorDefaults: {} });
           });
 
-        return () => { unsubRec(); unsubMeta(); };
+        return () => { unsubRec(); unsubTasks(); unsubMeta(); };
       }, [user]);
 
-      // --- 自動跳號 ---
+      // --- 自動跳號 (公文) ---
       const nextNumbers = useMemo(() => {
         const today = new Date();
         const rocYear = today.getFullYear() - 1911;
@@ -306,7 +345,7 @@
         }
       }, [records, form.docType, form.rank, form.id, isManualNumber, nextNumbers]);
 
-      // --- 功能函數 ---
+      // --- 公文功能函數 ---
 
       const handleAuthorChange = (val) => {
         let update = { author: val };
@@ -353,7 +392,7 @@
           } else {
             await userRef.collection("records").doc(form.id).set(payload, { merge: true });
           }
-
+          // 自動儲存人員與代字
           if (form.author && form.code) {
              await userRef.collection("metadata").doc("general").set({
                authors: firebase.firestore.FieldValue.arrayUnion(form.author),
@@ -381,6 +420,31 @@
         } catch(e) { console.error(e); alert("刪除失敗"); }
       };
 
+      // --- 工作管制 功能函數 ---
+      const handleTaskSubmit = async () => {
+         if(!taskForm.title) return alert("請輸入工作名稱");
+         setProcessing(true);
+         try {
+            await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
+               .collection("tasks").add({
+                  ...taskForm,
+                  createdAt: new Date().toISOString()
+               });
+            setShowTaskModal(false);
+            setTaskForm(getInitialTaskForm());
+         } catch(e) { alert("新增失敗：" + e.message); }
+         finally { setProcessing(false); }
+      };
+
+      const deleteTask = async (id) => {
+         if(!confirm("確定刪除此工作項目？")) return;
+         try {
+            await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
+               .collection("tasks").doc(id).delete();
+         } catch(e) { alert("刪除失敗"); }
+      };
+
+      // --- 匯出匯入 Excel ---
       const handleExport = () => {
         if (records.length === 0) return alert("無資料");
         try {
@@ -391,19 +455,14 @@
           const wb = XLSX.utils.book_new();
           const ws = XLSX.utils.json_to_sheet(exportData);
           XLSX.utils.book_append_sheet(wb, ws, "紀錄");
-          XLSX.writeFile(wb, `公文備份_${new Date().toISOString().split('T')[0]}.xlsx`);
+          XLSX.writeFile(wb, `業務管理備份_${new Date().toISOString().split('T')[0]}.xlsx`);
         } catch (e) { alert("匯出失敗"); }
       };
 
-      // --- 匯入 Excel 功能 ---
       const handleImport = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
-        if(!confirm("確定要匯入此 Excel 嗎？\n請確認這是此系統匯出的格式，以免資料錯誤。")) {
-          e.target.value = null; 
-          return;
-        }
+        if(!confirm("確定要匯入？請確認格式正確。")) { e.target.value = null; return; }
 
         setProcessing(true);
         const reader = new FileReader();
@@ -415,18 +474,14 @@
             const worksheet = workbook.Sheets[firstSheetName];
             const json = XLSX.utils.sheet_to_json(worksheet);
 
-            if (json.length === 0) throw new Error("Excel 內無資料");
+            if (json.length === 0) throw new Error("無資料");
 
             const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-            const batchSize = 10; 
             let successCount = 0;
-            const newAuthors = new Set();
-            const newCodes = new Set();
+            const newAuthors = new Set(); const newCodes = new Set();
 
-            // 逐筆寫入 (為了安全起見不使用 batch，避免單筆錯誤導致全部失敗)
             for (let i = 0; i < json.length; i++) {
                const row = json[i];
-               // 簡單的欄位對應
                const record = {
                  number: String(row["總號"] || ""),
                  date: row["日期"] || new Date().toISOString().split("T")[0],
@@ -439,7 +494,6 @@
                  createdAt: new Date().toISOString(),
                  updatedAt: new Date().toISOString()
                };
-
                if(record.number && record.subject) {
                  await userRef.collection("records").add(record);
                  successCount++;
@@ -447,28 +501,20 @@
                  if(record.code) newCodes.add(record.code);
                }
             }
-
-            // 更新人員與代字庫
             if (newAuthors.size > 0 || newCodes.size > 0) {
               await userRef.collection("metadata").doc("general").set({
                  authors: firebase.firestore.FieldValue.arrayUnion(...Array.from(newAuthors)),
                  codes: firebase.firestore.FieldValue.arrayUnion(...Array.from(newCodes))
               }, { merge: true });
             }
-
-            alert(`匯入完成！成功匯入 ${successCount} 筆資料。`);
-            window.location.reload(); // 重整頁面以確保資料顯示正確
-          } catch (err) {
-            console.error(err);
-            alert("匯入失敗：" + err.message);
-          } finally {
-            setProcessing(false);
-            e.target.value = null; // 重置 input
-          }
+            alert(`匯入完成！共 ${successCount} 筆。`);
+            window.location.reload();
+          } catch (err) { alert("匯入失敗：" + err.message); } finally { setProcessing(false); e.target.value = null; }
         };
         reader.readAsBinaryString(file);
       };
 
+      // --- 其他 Helper ---
       const copyToClipboard = (r) => {
          const dateText = formatDateNoYear(r.date); 
          const numSuffix = r.number ? r.number.slice(-3) : "000";
@@ -482,7 +528,7 @@
              }
          });
       };
-
+      
       const handleSubNumberEdit = (r) => {
         setEditingSubNumId(r.id);
         setEditingSubNumVal(r.subNumber || "");
@@ -517,10 +563,9 @@
         } catch(e) { alert("移除失敗"); }
       };
 
-      const handleLogout = () => {
-        if(confirm("確定登出?")) auth.signOut();
-      };
+      const handleLogout = () => { if(confirm("確定登出?")) auth.signOut(); };
 
+      // --- Filter Lists ---
       const displayRecords = useMemo(() => {
         let res = [...records];
         if (filter.type === 'search') {
@@ -535,16 +580,23 @@
         return res;
       }, [records, filter, sortOrder]);
 
-      const docSystemRecords = useMemo(() => {
-        return records.filter(r => r.docType === docTab);
-      }, [records, docTab]);
+      const docSystemRecords = useMemo(() => records.filter(r => r.docType === docTab), [records, docTab]);
 
-      // --- 條件渲染 ---
+      const filteredTasks = useMemo(() => {
+         let res = [...tasks];
+         if(taskFilter !== "全部") res = res.filter(t => t.priority === taskFilter);
+         if(taskSearch) res = res.filter(t => t.title.toLowerCase().includes(taskSearch.toLowerCase()));
+         // Sort by endDate closest first
+         res.sort((a,b) => new Date(a.endDate) - new Date(b.endDate));
+         return res;
+      }, [tasks, taskFilter, taskSearch]);
+
+      // --- Render ---
       if (authChecking) return <div className="h-screen flex items-center justify-center text-slate-400">載入中...</div>;
       if (!user) return <LoginScreen />;
 
       return (
-        <div className="min-h-screen flex flex-col bg-slate-50 pb-20">
+        <div className="min-h-screen flex flex-col bg-slate-50 pb-20 bg-dot-pattern">
           
           {menuOpen && (
             <div 
@@ -570,6 +622,12 @@
                  className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition ${currentView==='docs' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
                  <i className="fas fa-folder-open w-6 text-center"></i> 公文系統
                </button>
+
+               {/* 新增：工作管制 */}
+               <button onClick={()=>{setCurrentView('tasks');setMenuOpen(false)}} 
+                 className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition ${currentView==='tasks' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
+                 <i className="fas fa-tasks w-6 text-center"></i> 工作管制
+               </button>
                
                <button onClick={()=>{setCurrentView('personnel');setMenuOpen(false)}} 
                  className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition ${currentView==='personnel' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
@@ -582,7 +640,6 @@
                   <i className="fas fa-file-export w-6 text-center"></i> 匯出 Excel
                </button>
                
-               {/* 匯入 Excel 按鈕 */}
                <div className="relative">
                  <input type="file" ref={fileInputRef} onChange={handleImport} accept=".xlsx, .xls" className="hidden" />
                  <button onClick={()=>fileInputRef.current.click()} className="w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 text-slate-600 hover:bg-slate-50">
@@ -607,15 +664,13 @@
               <h1 className="font-bold text-lg text-slate-800">
                 {currentView === 'home' && '填寫表單'}
                 {currentView === 'docs' && '公文系統'}
+                {currentView === 'tasks' && '工作管制'}
                 {currentView === 'personnel' && '人員設定'}
               </h1>
             </div>
-            
             {currentView === 'home' && (
               <button onClick={()=>{setForm(getInitialForm());setFilter({type:'all',value:''});setIsManualNumber(false)}} 
-                className="text-slate-400 hover:text-slate-600 text-sm font-medium px-2 py-1">
-                 重置
-              </button>
+                className="text-slate-400 hover:text-slate-600 text-sm font-medium px-2 py-1">重置</button>
             )}
           </header>
 
@@ -733,7 +788,6 @@
                       </div>
                    </div>
                  ))}
-                 {!loadingData && displayRecords.length === 0 && <div className="text-center text-slate-400 py-8">尚無資料</div>}
               </div>
             </main>
           )}
@@ -755,7 +809,6 @@
                              <h3 className="font-bold text-slate-800 text-lg mb-1">{r.subject}</h3>
                              <div className="text-sm text-slate-600 bg-slate-100 inline-block px-2 py-0.5 rounded">{r.author} ({r.rank})</div>
                           </div>
-                          
                           <div className="text-right pl-2">
                              <div className="text-[10px] text-slate-400 mb-1">分號</div>
                              {editingSubNumId === r.id ? (
@@ -781,7 +834,161 @@
             </main>
           )}
 
-          {/* --- 視圖 3: 人員設定 --- */}
+          {/* --- 視圖 3: 工作管制 (New) --- */}
+          {currentView === 'tasks' && (
+             <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-4 fade-in">
+                {/* 搜尋與過濾 */}
+                <div className="bg-white p-2 rounded-2xl shadow-sm space-y-2">
+                   <div className="relative">
+                      <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                      <input type="text" className="w-full bg-slate-100 rounded-xl pl-9 pr-4 py-2 text-sm outline-none focus:ring-2 ring-blue-100 transition" 
+                         placeholder="搜尋工作名稱..." value={taskSearch} onChange={e=>setTaskSearch(e.target.value)} />
+                   </div>
+                   <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                      {['全部', '急件', '一般', '交辦'].map(f => (
+                         <button key={f} onClick={()=>setTaskFilter(f)} 
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${taskFilter===f ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-500'}`}>
+                            {f === '急件' && <span className="w-2 h-2 rounded-full bg-red-500 inline-block mr-1"></span>}
+                            {f === '一般' && <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block mr-1"></span>}
+                            {f === '交辦' && <span className="w-2 h-2 rounded-full bg-purple-500 inline-block mr-1"></span>}
+                            {f}
+                         </button>
+                      ))}
+                   </div>
+                </div>
+
+                {/* 工作列表 */}
+                <div className="space-y-3 pb-20">
+                   {filteredTasks.length === 0 && <div className="text-center text-slate-400 py-10">無工作項目</div>}
+                   {filteredTasks.map(t => {
+                      const daysLeft = getDaysRemaining(t.endDate);
+                      const priorityColor = t.priority === '急件' ? 'bg-red-500' : t.priority === '一般' ? 'bg-emerald-500' : 'bg-purple-500';
+                      
+                      return (
+                         <div key={t.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 relative overflow-hidden group">
+                            {/* 側邊顏色條 */}
+                            <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${priorityColor}`}></div>
+                            
+                            <div className="flex justify-between items-start pl-3">
+                               <div>
+                                  <div className="flex items-center gap-2 mb-1">
+                                     <h3 className="font-bold text-slate-800 text-lg">{t.title}</h3>
+                                  </div>
+                                  <div className="text-xs text-slate-500 space-y-1">
+                                     <div>委託人：{t.delegator || "未設定"} | 業務種類：{t.type}</div>
+                                     <div className="flex items-center gap-1">
+                                        <i className="far fa-calendar-alt"></i> 
+                                        {formatDateNoYear(t.startDate)} → {formatDateNoYear(t.endDate)}
+                                     </div>
+                                  </div>
+                               </div>
+                               <div className="flex flex-col items-end">
+                                  {daysLeft !== null && (
+                                     <div className={`text-xs font-bold px-2 py-1 rounded-lg mb-2 ${daysLeft <= 3 ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'}`}>
+                                        剩 {daysLeft} 天
+                                     </div>
+                                  )}
+                                  <button onClick={()=>deleteTask(t.id)} className="text-slate-300 hover:text-red-500 transition p-1">
+                                     <i className="fas fa-trash-alt"></i>
+                                  </button>
+                               </div>
+                            </div>
+                         </div>
+                      );
+                   })}
+                </div>
+
+                {/* 懸浮新增按鈕 */}
+                <button onClick={()=>setShowTaskModal(true)} 
+                   className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl active:scale-90 transition z-20">
+                   <i className="fas fa-plus"></i>
+                </button>
+             </main>
+          )}
+
+          {/* --- Modal: 建立新工作 --- */}
+          {showTaskModal && (
+             <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+                <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={()=>setShowTaskModal(false)}></div>
+                <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 relative z-10 animate-[fadeIn_0.3s_ease-out]">
+                   <div className="flex justify-between items-center mb-6">
+                      <h2 className="text-xl font-bold text-slate-800">建立新工作</h2>
+                      <button onClick={()=>setShowTaskModal(false)} className="w-8 h-8 flex items-center justify-center bg-slate-100 rounded-full text-slate-500">
+                         <i className="fas fa-times"></i>
+                      </button>
+                   </div>
+
+                   <div className="space-y-4 max-h-[70vh] overflow-y-auto no-scrollbar pb-4">
+                      <div>
+                         <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">工作名稱</label>
+                         <input type="text" className="input-ios bg-slate-50" value={taskForm.title} onChange={e=>setTaskForm({...taskForm, title:e.target.value})} />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                         <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">業務種類</label>
+                            <div className="select-wrapper">
+                               <select className="input-ios bg-slate-50" value={taskForm.type} onChange={e=>setTaskForm({...taskForm, type:e.target.value})}>
+                                  <option value="行政">行政</option>
+                                  <option value="訓練">訓練</option>
+                                  <option value="後勤">後勤</option>
+                                  <option value="人事">人事</option>
+                                  <option value="保養">保養</option>
+                                  <option value="交辦事項">交辦事項</option>
+                                  <option value="其他">其他</option>
+                               </select>
+                            </div>
+                         </div>
+                         <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">委託人(單位)</label>
+                            <input type="text" className="input-ios bg-slate-50" value={taskForm.delegator} onChange={e=>setTaskForm({...taskForm, delegator:e.target.value})} />
+                         </div>
+                      </div>
+
+                      <div>
+                         <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">重要性</label>
+                         <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
+                            {['急件', '一般', '交辦'].map(p => (
+                               <button key={p} onClick={()=>setTaskForm({...taskForm, priority:p})}
+                                  className={`flex-1 py-2 text-xs rounded-lg font-bold transition-all ${taskForm.priority===p ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400'}`}>
+                                  <span className={`w-2 h-2 rounded-full inline-block mr-1 ${p==='急件'?'bg-red-500':p==='一般'?'bg-emerald-500':'bg-purple-500'}`}></span>
+                                  {p}
+                               </button>
+                            ))}
+                         </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                         <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">承辦日期</label>
+                            <input type="date" className="input-ios bg-slate-50 text-sm" value={taskForm.startDate} onChange={e=>setTaskForm({...taskForm, startDate:e.target.value})} />
+                         </div>
+                         <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">結束日期</label>
+                            <input type="date" className="input-ios bg-slate-50 text-sm" value={taskForm.endDate} onChange={e=>setTaskForm({...taskForm, endDate:e.target.value})} />
+                         </div>
+                      </div>
+
+                      <div>
+                         <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">備註 / 附件</label>
+                         <textarea className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm h-24 outline-none focus:border-blue-500" 
+                            placeholder="輸入內容..." value={taskForm.notes} onChange={e=>setTaskForm({...taskForm, notes:e.target.value})}></textarea>
+                      </div>
+                   </div>
+
+                   <div className="grid grid-cols-1 gap-3 pt-4 border-t border-slate-100 mt-2">
+                      <button onClick={handleTaskSubmit} disabled={processing} className="bg-blue-600 text-white font-bold h-12 rounded-xl shadow-lg active:scale-95 transition">
+                         {processing ? "處理中..." : "建立"}
+                      </button>
+                      <button onClick={()=>setShowTaskModal(false)} className="bg-slate-100 text-slate-500 font-bold h-12 rounded-xl active:scale-95 transition">
+                         取消
+                      </button>
+                   </div>
+                </div>
+             </div>
+          )}
+
+          {/* --- 視圖 4: 人員設定 --- */}
           {currentView === 'personnel' && (
             <main className="flex-1 w-full max-w-md mx-auto p-4 fade-in">
                <div className="bg-white rounded-xl shadow-sm overflow-hidden">

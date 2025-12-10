@@ -6,8 +6,10 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
   />
-  <title>公文發文系統 (雲端同步+匯入版)</title>
-
+  <title>業務管理系統</title>
+  <link rel="icon" href="./logo.jpg" />
+  <link rel="apple-touch-icon" href="./logo.jpg" />
+  
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
@@ -151,10 +153,10 @@
         <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
           <div className="bg-white w-full max-w-sm p-8 rounded-2xl shadow-xl fade-in">
              <div className="text-center mb-8">
-               <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto flex items-center justify-center text-white text-3xl shadow-lg mb-4">
-                 <i className="fas fa-file-signature"></i>
+               <div className="w-24 h-24 mx-auto mb-4 rounded-3xl overflow-hidden shadow-xl border-2 border-slate-100">
+                 <img src="./logo.jpg" alt="Logo" className="w-full h-full object-cover" />
                </div>
-               <h1 className="text-2xl font-bold text-slate-800">公文系統 Pro</h1>
+               <h1 className="text-2xl font-bold text-slate-800">業務管理系統</h1>
                <p className="text-slate-400 text-sm mt-1">
                  {isRegister ? "建立您的雲端帳戶" : "登入以同步資料"}
                </p>

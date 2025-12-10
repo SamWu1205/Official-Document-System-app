@@ -84,11 +84,24 @@
     .fade-in { animation: fadeIn 0.4s ease-in-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-    /* 點狀背景圖案 (仿筆記本) */
+    /* 點狀背景圖案 */
     .bg-dot-pattern {
       background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
       background-size: 20px 20px;
     }
+
+    /* 鈴鐺搖晃動畫 */
+    @keyframes bellShake {
+      0% { transform: rotate(0); }
+      15% { transform: rotate(15deg); }
+      30% { transform: rotate(-15deg); }
+      45% { transform: rotate(10deg); }
+      60% { transform: rotate(-10deg); }
+      75% { transform: rotate(5deg); }
+      85% { transform: rotate(-5deg); }
+      100% { transform: rotate(0); }
+    }
+    .animate-bell { animation: bellShake 1s ease-in-out infinite; }
   </style>
 </head>
 <body>
@@ -135,7 +148,7 @@
       return diffDays;
     };
 
-    // --- 登入畫面組件 ---
+    // --- 登入畫面 ---
     const LoginScreen = () => {
       const [isRegister, setIsRegister] = useState(false);
       const [email, setEmail] = useState("");
@@ -159,7 +172,6 @@
           else if(err.code === 'auth/wrong-password') msg = "密碼錯誤";
           else if(err.code === 'auth/user-not-found') msg = "找不到此帳號";
           else if(err.code === 'auth/weak-password') msg = "密碼太弱";
-          else if(err.code === 'auth/invalid-email') msg = "Email 格式錯誤";
           setError(msg);
         } finally {
           setLoading(false);
@@ -178,7 +190,6 @@
                  {isRegister ? "建立您的雲端帳戶" : "登入以同步資料"}
                </p>
              </div>
-
              <form onSubmit={handleAuth} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">Email</label>
@@ -190,15 +201,12 @@
                   <input type="password" required className="input-ios" 
                     value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" />
                 </div>
-
                 {error && <div className="text-red-500 text-sm bg-red-50 p-2 rounded-lg text-center"><i className="fas fa-exclamation-circle mr-1"></i>{error}</div>}
-
                 <button type="submit" disabled={loading}
                   className="w-full bg-slate-900 text-white font-bold h-12 rounded-xl shadow-lg active:scale-95 transition flex items-center justify-center">
                   {loading ? <i className="fas fa-circle-notch fa-spin"></i> : (isRegister ? "註冊帳號" : "登入")}
                 </button>
              </form>
-
              <div className="mt-6 text-center">
                <button onClick={()=>setIsRegister(!isRegister)} className="text-sm text-blue-600 font-bold hover:underline">
                  {isRegister ? "已有帳號？返回登入" : "還沒帳號？立即註冊"}
@@ -214,15 +222,16 @@
       const [user, setUser] = useState(null);
       const [authChecking, setAuthChecking] = useState(true); 
       
-      const [records, setRecords] = useState([]); // 公文紀錄
-      const [tasks, setTasks] = useState([]); // 工作管制紀錄
-      const [meta, setMeta] = useState({ authors: [], codes: [], authorDefaults: {} });
+      const [records, setRecords] = useState([]); 
+      const [tasks, setTasks] = useState([]); 
+      // meta 增加 taskTypes 
+      const [meta, setMeta] = useState({ authors: [], codes: [], authorDefaults: {}, taskTypes: [] });
       const [loadingData, setLoadingData] = useState(false);
       const [processing, setProcessing] = useState(false);
 
       // --- 視圖控制 ---
       const [menuOpen, setMenuOpen] = useState(false); 
-      const [currentView, setCurrentView] = useState("home"); // home, docs, tasks, personnel
+      const [currentView, setCurrentView] = useState("home"); 
       const [docTab, setDocTab] = useState("人勤令"); 
       
       // --- 公文編輯狀態 ---
@@ -230,20 +239,23 @@
       const [editingSubNumId, setEditingSubNumId] = useState(null); 
       const [editingSubNumVal, setEditingSubNumVal] = useState(""); 
       const [newAuthorName, setNewAuthorName] = useState(""); 
+      const [newTaskType, setNewTaskType] = useState(""); // 新增業務種類
 
       // --- 工作管制狀態 ---
       const [showTaskModal, setShowTaskModal] = useState(false);
-      const [taskFilter, setTaskFilter] = useState("全部"); // 全部, 急件, 一般, 交辦
+      const [taskFilter, setTaskFilter] = useState("全部"); 
       const [taskSearch, setTaskSearch] = useState("");
       
       const getInitialTaskForm = () => ({
+         id: null, // 用來判斷是新增還是修改
          title: "",
-         type: "行政", // 業務種類預設
-         delegator: "", // 委託人
-         priority: "一般", // 急件, 一般, 交辦
+         type: "行政", 
+         delegator: "", 
+         priority: "一般", 
          startDate: new Date().toISOString().split("T")[0],
          endDate: new Date().toISOString().split("T")[0],
-         notes: ""
+         notes: "",
+         reminderDays: "0" // 提醒天數 (0=不提醒)
       });
       const [taskForm, setTaskForm] = useState(getInitialTaskForm());
 
@@ -286,7 +298,6 @@
         setLoadingData(true);
         const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
 
-        // 監聽公文
         const unsubRec = userRef.collection("records")
           .orderBy("createdAt", "desc")
           .limit(300) 
@@ -295,7 +306,6 @@
             setRecords(data);
           });
 
-        // 監聽工作管制 (新)
         const unsubTasks = userRef.collection("tasks")
           .orderBy("createdAt", "desc")
           .onSnapshot(snap => {
@@ -306,8 +316,23 @@
 
         const unsubMeta = userRef.collection("metadata").doc("general")
           .onSnapshot(doc => {
-            if (doc.exists) setMeta(doc.data());
-            else userRef.collection("metadata").doc("general").set({ authors: [], codes: [], authorDefaults: {} });
+            if (doc.exists) {
+               // 確保 taskTypes 存在，若無則給預設值
+               const data = doc.data();
+               if(!data.taskTypes) data.taskTypes = ['行政', '訓練', '後勤', '人事', '保養', '交辦事項', '其他'];
+               setMeta(data);
+            }
+            else {
+               // 初始設定
+               const initialMeta = { 
+                  authors: [], 
+                  codes: [], 
+                  authorDefaults: {},
+                  taskTypes: ['行政', '訓練', '後勤', '人事', '保養', '交辦事項', '其他']
+               };
+               userRef.collection("metadata").doc("general").set(initialMeta);
+               setMeta(initialMeta);
+            }
           });
 
         return () => { unsubRec(); unsubTasks(); unsubMeta(); };
@@ -392,14 +417,12 @@
           } else {
             await userRef.collection("records").doc(form.id).set(payload, { merge: true });
           }
-          // 自動儲存人員與代字
           if (form.author && form.code) {
              await userRef.collection("metadata").doc("general").set({
                authors: firebase.firestore.FieldValue.arrayUnion(form.author),
                codes: firebase.firestore.FieldValue.arrayUnion(form.code)
              }, { merge: true });
           }
-
           const resetState = getInitialForm();
           resetState.date = form.date; 
           resetState.author = form.author;
@@ -421,22 +444,41 @@
       };
 
       // --- 工作管制 功能函數 ---
+      const openTaskModal = (task = null) => {
+         if (task) {
+            setTaskForm({ ...task, reminderDays: task.reminderDays || "0" });
+         } else {
+            setTaskForm(getInitialTaskForm());
+         }
+         setShowTaskModal(true);
+      };
+
       const handleTaskSubmit = async () => {
          if(!taskForm.title) return alert("請輸入工作名稱");
          setProcessing(true);
          try {
-            await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
-               .collection("tasks").add({
-                  ...taskForm,
-                  createdAt: new Date().toISOString()
-               });
+            const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks");
+            
+            const payload = { ...taskForm, updatedAt: new Date().toISOString() };
+            const id = payload.id;
+            delete payload.id; // 不存 ID 到欄位中
+
+            if (id) {
+               // 更新
+               await userRef.doc(id).update(payload);
+            } else {
+               // 新增
+               payload.createdAt = new Date().toISOString();
+               await userRef.add(payload);
+            }
             setShowTaskModal(false);
             setTaskForm(getInitialTaskForm());
-         } catch(e) { alert("新增失敗：" + e.message); }
+         } catch(e) { alert("儲存失敗：" + e.message); }
          finally { setProcessing(false); }
       };
 
-      const deleteTask = async (id) => {
+      const deleteTask = async (e, id) => {
+         e.stopPropagation(); // 阻止冒泡，避免觸發編輯
          if(!confirm("確定刪除此工作項目？")) return;
          try {
             await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
@@ -444,25 +486,75 @@
          } catch(e) { alert("刪除失敗"); }
       };
 
+      // --- 系統設定 (人員/種類) 功能 ---
+      const addAuthor = async () => {
+        if(!newAuthorName.trim()) return;
+        try {
+          await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
+            .collection("metadata").doc("general")
+            .update({ authors: firebase.firestore.FieldValue.arrayUnion(newAuthorName.trim()) });
+          setNewAuthorName("");
+        } catch(e) { alert("新增失敗"); }
+      };
+
+      const deleteAuthor = async (name) => {
+        if(!confirm(`確定移除人員 ${name} ?`)) return;
+        try {
+          await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
+            .collection("metadata").doc("general")
+            .update({ authors: firebase.firestore.FieldValue.arrayRemove(name) });
+        } catch(e) { alert("移除失敗"); }
+      };
+
+      const addTaskType = async () => {
+        if(!newTaskType.trim()) return;
+        try {
+          await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
+            .collection("metadata").doc("general")
+            .update({ taskTypes: firebase.firestore.FieldValue.arrayUnion(newTaskType.trim()) });
+          setNewTaskType("");
+        } catch(e) { alert("新增失敗"); }
+      };
+
+      const deleteTaskType = async (type) => {
+        if(!confirm(`確定移除分類 ${type} ?`)) return;
+        try {
+          await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
+            .collection("metadata").doc("general")
+            .update({ taskTypes: firebase.firestore.FieldValue.arrayRemove(type) });
+        } catch(e) { alert("移除失敗"); }
+      };
+
       // --- 匯出匯入 Excel ---
       const handleExport = () => {
-        if (records.length === 0) return alert("無資料");
+        if (records.length === 0 && tasks.length === 0) return alert("無資料");
         try {
-          const exportData = records.map(r => ({
-            "總號": r.number, "日期": r.date, "發文者": r.author, "代字": r.code, 
-            "主旨": r.subject, "分號": r.subNumber || "", "種類": r.docType, "階級": r.rank || ""
-          }));
           const wb = XLSX.utils.book_new();
-          const ws = XLSX.utils.json_to_sheet(exportData);
-          XLSX.utils.book_append_sheet(wb, ws, "紀錄");
-          XLSX.writeFile(wb, `業務管理備份_${new Date().toISOString().split('T')[0]}.xlsx`);
+          
+          if(records.length > 0){
+             const recData = records.map(r => ({
+               "總號": r.number, "日期": r.date, "發文者": r.author, "代字": r.code, 
+               "主旨": r.subject, "分號": r.subNumber || "", "種類": r.docType, "階級": r.rank || ""
+             }));
+             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(recData), "公文紀錄");
+          }
+
+          if(tasks.length > 0){
+             const taskData = tasks.map(t => ({
+                "標題": t.title, "業務種類": t.type, "委託人": t.delegator, "重要性": t.priority,
+                "開始日期": t.startDate, "結束日期": t.endDate, "備註": t.notes
+             }));
+             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(taskData), "工作管制");
+          }
+
+          XLSX.writeFile(wb, `業務系統備份_${new Date().toISOString().split('T')[0]}.xlsx`);
         } catch (e) { alert("匯出失敗"); }
       };
 
       const handleImport = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if(!confirm("確定要匯入？請確認格式正確。")) { e.target.value = null; return; }
+        if(!confirm("確定要匯入？\n請確認這是本系統匯出的格式。")) { e.target.value = null; return; }
 
         setProcessing(true);
         const reader = new FileReader();
@@ -470,44 +562,25 @@
           try {
             const data = evt.target.result;
             const workbook = XLSX.read(data, { type: 'binary' });
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
-            const json = XLSX.utils.sheet_to_json(worksheet);
-
-            if (json.length === 0) throw new Error("無資料");
-
             const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-            let successCount = 0;
-            const newAuthors = new Set(); const newCodes = new Set();
+            let count = 0;
 
-            for (let i = 0; i < json.length; i++) {
-               const row = json[i];
-               const record = {
-                 number: String(row["總號"] || ""),
-                 date: row["日期"] || new Date().toISOString().split("T")[0],
-                 author: row["發文者"] || "",
-                 code: row["代字"] || "",
-                 subject: row["主旨"] || "",
-                 subNumber: String(row["分號"] || ""),
-                 docType: row["種類"] || "一般公文",
-                 rank: row["階級"] || "軍官",
-                 createdAt: new Date().toISOString(),
-                 updatedAt: new Date().toISOString()
-               };
-               if(record.number && record.subject) {
-                 await userRef.collection("records").add(record);
-                 successCount++;
-                 if(record.author) newAuthors.add(record.author);
-                 if(record.code) newCodes.add(record.code);
+            // 匯入公文 (Sheet1 or Named '公文紀錄')
+            const recSheet = workbook.Sheets["公文紀錄"] || workbook.Sheets[workbook.SheetNames[0]];
+            if(recSheet) {
+               const json = XLSX.utils.sheet_to_json(recSheet);
+               for(let row of json) {
+                  if(row["總號"] && row["主旨"]) {
+                     await userRef.collection("records").add({
+                        number: String(row["總號"]), date: row["日期"], author: row["發文者"], code: row["代字"],
+                        subject: row["主旨"], subNumber: String(row["分號"]||""), docType: row["種類"]||"一般公文", rank: row["階級"]||"軍官",
+                        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+                     });
+                     count++;
+                  }
                }
             }
-            if (newAuthors.size > 0 || newCodes.size > 0) {
-              await userRef.collection("metadata").doc("general").set({
-                 authors: firebase.firestore.FieldValue.arrayUnion(...Array.from(newAuthors)),
-                 codes: firebase.firestore.FieldValue.arrayUnion(...Array.from(newCodes))
-              }, { merge: true });
-            }
-            alert(`匯入完成！共 ${successCount} 筆。`);
+            alert(`匯入完成！`);
             window.location.reload();
           } catch (err) { alert("匯入失敗：" + err.message); } finally { setProcessing(false); e.target.value = null; }
         };
@@ -544,25 +617,6 @@
         } catch(e) { alert("更新失敗"); }
       };
 
-      const addAuthor = async () => {
-        if(!newAuthorName.trim()) return;
-        try {
-          await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
-            .collection("metadata").doc("general")
-            .update({ authors: firebase.firestore.FieldValue.arrayUnion(newAuthorName.trim()) });
-          setNewAuthorName("");
-        } catch(e) { alert("新增失敗"); }
-      };
-
-      const deleteAuthor = async (name) => {
-        if(!confirm(`確定移除 ${name} ?`)) return;
-        try {
-          await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
-            .collection("metadata").doc("general")
-            .update({ authors: firebase.firestore.FieldValue.arrayRemove(name) });
-        } catch(e) { alert("移除失敗"); }
-      };
-
       const handleLogout = () => { if(confirm("確定登出?")) auth.signOut(); };
 
       // --- Filter Lists ---
@@ -586,7 +640,6 @@
          let res = [...tasks];
          if(taskFilter !== "全部") res = res.filter(t => t.priority === taskFilter);
          if(taskSearch) res = res.filter(t => t.title.toLowerCase().includes(taskSearch.toLowerCase()));
-         // Sort by endDate closest first
          res.sort((a,b) => new Date(a.endDate) - new Date(b.endDate));
          return res;
       }, [tasks, taskFilter, taskSearch]);
@@ -623,7 +676,6 @@
                  <i className="fas fa-folder-open w-6 text-center"></i> 公文系統
                </button>
 
-               {/* 新增：工作管制 */}
                <button onClick={()=>{setCurrentView('tasks');setMenuOpen(false)}} 
                  className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition ${currentView==='tasks' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
                  <i className="fas fa-tasks w-6 text-center"></i> 工作管制
@@ -631,7 +683,7 @@
                
                <button onClick={()=>{setCurrentView('personnel');setMenuOpen(false)}} 
                  className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition ${currentView==='personnel' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
-                 <i className="fas fa-users-cog w-6 text-center"></i> 人員設定
+                 <i className="fas fa-cogs w-6 text-center"></i> 系統設定
                </button>
 
                <div className="border-t border-slate-100 my-2"></div>
@@ -665,7 +717,7 @@
                 {currentView === 'home' && '填寫表單'}
                 {currentView === 'docs' && '公文系統'}
                 {currentView === 'tasks' && '工作管制'}
-                {currentView === 'personnel' && '人員設定'}
+                {currentView === 'personnel' && '系統設定'}
               </h1>
             </div>
             {currentView === 'home' && (
@@ -834,7 +886,7 @@
             </main>
           )}
 
-          {/* --- 視圖 3: 工作管制 (New) --- */}
+          {/* --- 視圖 3: 工作管制 --- */}
           {currentView === 'tasks' && (
              <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-4 fade-in">
                 {/* 搜尋與過濾 */}
@@ -863,9 +915,13 @@
                    {filteredTasks.map(t => {
                       const daysLeft = getDaysRemaining(t.endDate);
                       const priorityColor = t.priority === '急件' ? 'bg-red-500' : t.priority === '一般' ? 'bg-emerald-500' : 'bg-purple-500';
-                      
+                      // 提醒邏輯：如果 daysLeft <= reminderDays 且 >= 0，顯示提醒
+                      const reminderDays = parseInt(t.reminderDays || 0, 10);
+                      const showReminder = reminderDays > 0 && daysLeft !== null && daysLeft <= reminderDays && daysLeft >= 0;
+
                       return (
-                         <div key={t.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 relative overflow-hidden group">
+                         <div key={t.id} onClick={()=>openTaskModal(t)}
+                            className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 relative overflow-hidden active:scale-[0.98] transition cursor-pointer">
                             {/* 側邊顏色條 */}
                             <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${priorityColor}`}></div>
                             
@@ -873,6 +929,7 @@
                                <div>
                                   <div className="flex items-center gap-2 mb-1">
                                      <h3 className="font-bold text-slate-800 text-lg">{t.title}</h3>
+                                     {showReminder && <i className="fas fa-bell text-red-500 animate-bell"></i>}
                                   </div>
                                   <div className="text-xs text-slate-500 space-y-1">
                                      <div>委託人：{t.delegator || "未設定"} | 業務種類：{t.type}</div>
@@ -888,7 +945,7 @@
                                         剩 {daysLeft} 天
                                      </div>
                                   )}
-                                  <button onClick={()=>deleteTask(t.id)} className="text-slate-300 hover:text-red-500 transition p-1">
+                                  <button onClick={(e)=>deleteTask(e, t.id)} className="text-slate-300 hover:text-red-500 transition p-2 rounded-full hover:bg-red-50">
                                      <i className="fas fa-trash-alt"></i>
                                   </button>
                                </div>
@@ -899,20 +956,20 @@
                 </div>
 
                 {/* 懸浮新增按鈕 */}
-                <button onClick={()=>setShowTaskModal(true)} 
+                <button onClick={()=>openTaskModal(null)} 
                    className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl active:scale-90 transition z-20">
                    <i className="fas fa-plus"></i>
                 </button>
              </main>
           )}
 
-          {/* --- Modal: 建立新工作 --- */}
+          {/* --- Modal: 建立/修改工作 --- */}
           {showTaskModal && (
              <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
                 <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={()=>setShowTaskModal(false)}></div>
                 <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 relative z-10 animate-[fadeIn_0.3s_ease-out]">
                    <div className="flex justify-between items-center mb-6">
-                      <h2 className="text-xl font-bold text-slate-800">建立新工作</h2>
+                      <h2 className="text-xl font-bold text-slate-800">{taskForm.id ? "編輯工作" : "建立新工作"}</h2>
                       <button onClick={()=>setShowTaskModal(false)} className="w-8 h-8 flex items-center justify-center bg-slate-100 rounded-full text-slate-500">
                          <i className="fas fa-times"></i>
                       </button>
@@ -929,13 +986,7 @@
                             <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">業務種類</label>
                             <div className="select-wrapper">
                                <select className="input-ios bg-slate-50" value={taskForm.type} onChange={e=>setTaskForm({...taskForm, type:e.target.value})}>
-                                  <option value="行政">行政</option>
-                                  <option value="訓練">訓練</option>
-                                  <option value="後勤">後勤</option>
-                                  <option value="人事">人事</option>
-                                  <option value="保養">保養</option>
-                                  <option value="交辦事項">交辦事項</option>
-                                  <option value="其他">其他</option>
+                                  {meta.taskTypes.map(t => <option key={t} value={t}>{t}</option>)}
                                </select>
                             </div>
                          </div>
@@ -970,6 +1021,19 @@
                       </div>
 
                       <div>
+                         <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">到期提醒</label>
+                         <div className="select-wrapper">
+                             <select className="input-ios bg-slate-50" value={taskForm.reminderDays} onChange={e=>setTaskForm({...taskForm, reminderDays:e.target.value})}>
+                                <option value="0">不提醒</option>
+                                <option value="1">1 天前</option>
+                                <option value="3">3 天前</option>
+                                <option value="7">1 週前</option>
+                                <option value="14">2 週前</option>
+                             </select>
+                         </div>
+                      </div>
+
+                      <div>
                          <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">備註 / 附件</label>
                          <textarea className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm h-24 outline-none focus:border-blue-500" 
                             placeholder="輸入內容..." value={taskForm.notes} onChange={e=>setTaskForm({...taskForm, notes:e.target.value})}></textarea>
@@ -978,22 +1042,42 @@
 
                    <div className="grid grid-cols-1 gap-3 pt-4 border-t border-slate-100 mt-2">
                       <button onClick={handleTaskSubmit} disabled={processing} className="bg-blue-600 text-white font-bold h-12 rounded-xl shadow-lg active:scale-95 transition">
-                         {processing ? "處理中..." : "建立"}
-                      </button>
-                      <button onClick={()=>setShowTaskModal(false)} className="bg-slate-100 text-slate-500 font-bold h-12 rounded-xl active:scale-95 transition">
-                         取消
+                         {processing ? "處理中..." : (taskForm.id ? "儲存修改" : "建立")}
                       </button>
                    </div>
                 </div>
              </div>
           )}
 
-          {/* --- 視圖 4: 人員設定 --- */}
+          {/* --- 視圖 4: 系統設定 (人員/種類) --- */}
           {currentView === 'personnel' && (
-            <main className="flex-1 w-full max-w-md mx-auto p-4 fade-in">
+            <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-6 fade-in">
+               
+               {/* 業務種類設定 */}
                <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                   <div className="p-4 border-b border-slate-100 bg-slate-50">
-                     <h2 className="font-bold text-slate-700 mb-3">新增人員</h2>
+                     <h2 className="font-bold text-slate-700 mb-3">業務種類設定</h2>
+                     <div className="flex gap-2">
+                        <input type="text" value={newTaskType} onChange={e=>setNewTaskType(e.target.value)} 
+                          placeholder="例如：裝備、伙食..." className="flex-1 px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500" />
+                        <button onClick={addTaskType} className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold shadow-sm active:scale-95">新增</button>
+                     </div>
+                  </div>
+                  <div className="p-4 flex flex-wrap gap-2">
+                     {meta.taskTypes.map(t => (
+                        <div key={t} className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm font-bold">
+                           {t}
+                           <button onClick={()=>deleteTaskType(t)} className="text-slate-400 hover:text-red-500 px-1"><i className="fas fa-times"></i></button>
+                        </div>
+                     ))}
+                     {meta.taskTypes.length === 0 && <span className="text-slate-400 text-sm">無分類，請新增</span>}
+                  </div>
+               </div>
+
+               {/* 人員設定 */}
+               <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 bg-slate-50">
+                     <h2 className="font-bold text-slate-700 mb-3">人員設定</h2>
                      <div className="flex gap-2">
                         <input type="text" value={newAuthorName} onChange={e=>setNewAuthorName(e.target.value)} 
                           placeholder="輸入姓名..." className="flex-1 px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500" />
@@ -1015,7 +1099,7 @@
                                       {meta.codes.map(c=><option key={c} value={c}>{c}</option>)}
                                    </select>
                                 ) : (
-                                   <span>預設: {meta.authorDefaults?.[a] || "未設定"}</span>
+                                   <span>預設代字: {meta.authorDefaults?.[a] || "未設定"}</span>
                                 )}
                              </div>
                           </div>

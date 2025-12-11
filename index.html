@@ -421,7 +421,7 @@
             setForm(prev => ({
                 ...prev,
                 number: nextNumbers.main,
-                subNumber: predictedSub
+                subNumber: predictedSub // 自動帶入建議值，但 UI 可修改
             }));
         }
       }, [records, form.docType, form.rank, form.id, isManualNumber, nextNumbers]);
@@ -456,8 +456,26 @@
           const isNew = forceNew || !form.id;
           
           const finalMain = (isNew && !isManualNumber) ? nextNumbers.main : form.number;
-          const finalSub = isNew ? nextNumbers.getSub(form.docType, form.rank) : form.subNumber;
+          // 修改: 允許自由使用表單中的分號，不強制重新計算
+          const finalSub = form.subNumber || "";
           
+          // --- 重複檢查邏輯 ---
+          // 檢查是否有相同的「總號」+「分號」組合存在
+          // 如果是編輯舊檔案，則排除自己 (id !== form.id)
+          const duplicate = records.find(r => 
+             r.number === finalMain && 
+             r.subNumber === finalSub && 
+             r.id !== (isNew ? null : form.id)
+          );
+
+          if (duplicate) {
+             const warningMsg = `錯誤：總號 [${finalMain}] ${finalSub ? `分號 [${finalSub}] ` : ""}已存在，無法重複建立。`;
+             alert(warningMsg);
+             setProcessing(false);
+             return; // 阻止後續存檔
+          }
+          // --------------------
+
           const payload = {
             ...form,
             number: finalMain,
@@ -828,14 +846,22 @@
                         <datalist id="codeList">{meta.codes.map(c=><option key={c} value={c}/>)}</datalist>
                       </div>
                     </div>
-                    <div className="space-y-1">
-                       <label className="text-xs font-bold text-slate-500 ml-1">總號 ({isManualNumber?"手動":"自動"})</label>
-                       <div className="relative">
-                           <input type="text" readOnly={!isManualNumber} value={form.number} onChange={e => setForm({...form, number: e.target.value})}
-                               className={`input-ios text-center font-mono font-bold ${isManualNumber?"border-blue-400 ring-1 ring-blue-50":"bg-slate-50 text-slate-500"}`} placeholder="自動" />
-                           <button onClick={() => setIsManualNumber(!isManualNumber)} className="absolute right-0 top-0 bottom-0 px-3 text-slate-400 hover:text-blue-600">
-                               <i className={`fas ${isManualNumber?"fa-lock":"fa-pen"}`}></i>
-                           </button>
+                    {/* 修改: 將總號與分號放在一起 */}
+                    <div className="grid grid-cols-3 gap-2">
+                       <div className="col-span-2 space-y-1">
+                         <label className="text-xs font-bold text-slate-500 ml-1">總號 ({isManualNumber?"手動":"自動"})</label>
+                         <div className="relative">
+                             <input type="text" readOnly={!isManualNumber} value={form.number} onChange={e => setForm({...form, number: e.target.value})}
+                                 className={`input-ios text-center font-mono font-bold ${isManualNumber?"border-blue-400 ring-1 ring-blue-50":"bg-slate-50 text-slate-500"}`} placeholder="自動" />
+                             <button onClick={() => setIsManualNumber(!isManualNumber)} className="absolute right-0 top-0 bottom-0 px-3 text-slate-400 hover:text-blue-600">
+                                 <i className={`fas ${isManualNumber?"fa-lock":"fa-pen"}`}></i>
+                             </button>
+                         </div>
+                       </div>
+                       <div className="col-span-1 space-y-1">
+                          <label className="text-xs font-bold text-slate-500 ml-1">分號</label>
+                          <input type="text" value={form.subNumber} onChange={e => setForm({...form, subNumber: e.target.value})}
+                             className="input-ios text-center font-mono font-bold" placeholder="無" />
                        </div>
                     </div>
                  </div>

@@ -846,22 +846,53 @@
                         <datalist id="codeList">{meta.codes.map(c=><option key={c} value={c}/>)}</datalist>
                       </div>
                     </div>
-                    {/* 修改: 將總號與分號放在一起 */}
+                    
+                    {/* 修改: 優化總號與分號顯示，隱藏過長的前綴 */}
                     <div className="grid grid-cols-3 gap-2">
                        <div className="col-span-2 space-y-1">
-                         <label className="text-xs font-bold text-slate-500 ml-1">總號 ({isManualNumber?"手動":"自動"})</label>
-                         <div className="relative">
-                             <input type="text" readOnly={!isManualNumber} value={form.number} onChange={e => setForm({...form, number: e.target.value})}
-                                 className={`input-ios text-center font-mono font-bold ${isManualNumber?"border-blue-400 ring-1 ring-blue-50":"bg-slate-50 text-slate-500"}`} placeholder="自動" />
+                         <label className="text-xs font-bold text-slate-500 ml-1">
+                            總號 ({isManualNumber ? "手動" : "自動"})
+                         </label>
+                         <div className="relative flex items-center">
+                             {/* 顯示前綴 (唯讀) */}
+                             <span className="absolute left-3 text-slate-400 text-xs font-mono select-none">
+                                {form.number && form.number.length > 3 ? form.number.slice(0, -3) : ""}
+                             </span>
+                             
+                             <input 
+                               type="text" 
+                               readOnly={!isManualNumber} 
+                               /* 只顯示後三碼 */
+                               value={form.number && form.number.length > 3 ? form.number.slice(-3) : form.number} 
+                               onChange={e => {
+                                  // 修改時保留前綴，只更新後三碼
+                                  const val = e.target.value;
+                                  const prefix = form.number.slice(0, -3);
+                                  setForm({...form, number: prefix + val});
+                               }}
+                               className={`input-ios text-right font-mono font-bold pr-10 ${isManualNumber ? "border-blue-400 ring-1 ring-blue-50" : "bg-slate-50 text-slate-500"}`} 
+                               placeholder="000" 
+                             />
                              <button onClick={() => setIsManualNumber(!isManualNumber)} className="absolute right-0 top-0 bottom-0 px-3 text-slate-400 hover:text-blue-600">
-                                 <i className={`fas ${isManualNumber?"fa-lock":"fa-pen"}`}></i>
+                                 <i className={`fas ${isManualNumber ? "fa-lock-open" : "fa-lock"}`}></i>
                              </button>
                          </div>
                        </div>
+                       
                        <div className="col-span-1 space-y-1">
                           <label className="text-xs font-bold text-slate-500 ml-1">分號</label>
-                          <input type="text" value={form.subNumber} onChange={e => setForm({...form, subNumber: e.target.value})}
-                             className="input-ios text-center font-mono font-bold" placeholder="無" />
+                          <input 
+                             type="number" 
+                             /* 顯示時轉為數字以隱藏開頭的 0 (例如 001 變 1) */
+                             value={form.subNumber ? parseInt(form.subNumber, 10) : ""} 
+                             onChange={e => {
+                                // 儲存時自動補 0 回 3 位數 (例如 1 變 001)
+                                const val = e.target.value;
+                                setForm({...form, subNumber: val ? val.padStart(3, '0') : ""});
+                             }}
+                             className="input-ios text-center font-mono font-bold" 
+                             placeholder="無" 
+                          />
                        </div>
                     </div>
                  </div>

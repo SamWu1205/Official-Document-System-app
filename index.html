@@ -853,10 +853,12 @@
                          <label className="text-xs font-bold text-slate-500 ml-1">
                             總號 ({isManualNumber ? "手動" : "自動"})
                          </label>
-                         <div className="relative flex items-center">
-                             {/* 顯示前綴 (唯讀) */}
-                             <span className="absolute left-3 text-slate-400 text-xs font-mono select-none">
-                                {form.number && form.number.length > 3 ? form.number.slice(0, -3) : ""}
+<div className="grid grid-cols-3 gap-2">
+  <div className="col-span-2 space-y-1">
+     <label className="text-xs font-bold text-slate-500 ml-1">
+        總號 ({isManualNumber ? "手動" : "自動"})
+     </label>
+     <div className="relative flex items-center">
                              </span>
                              
                              <input 

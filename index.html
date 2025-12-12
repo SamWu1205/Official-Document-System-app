@@ -11,9 +11,9 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -21,21 +21,28 @@
 
   <style>
     * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
-    body { background-color: #f8fafc; font-family: sans-serif; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); overscroll-behavior-y: none; }
+    body { background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); overscroll-behavior-y: none; }
     .no-scrollbar::-webkit-scrollbar { display: none; }
-    .input-ios { height: 48px; width: 100%; border-radius: 10px; border: 1px solid #e2e8f0; background: #fff; padding: 0 12px; }
-    .sidebar { transition: transform 0.3s; } .sidebar-closed { transform: translateX(-100%); } .sidebar-open { transform: translateX(0); }
+    .input-ios { height: 48px; width: 100%; border-radius: 10px; border: 1px solid #e2e8f0; background: #fff; padding: 0 12px; appearance: none; }
+    .input-ios:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 2px rgba(59,130,246,0.1); }
+    .sidebar { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); } .sidebar-closed { transform: translateX(-100%); } .sidebar-open { transform: translateX(0); }
+    .overlay { transition: opacity 0.3s ease; }
     .bg-dot-pattern { background-image: radial-gradient(#cbd5e1 1px, transparent 1px); background-size: 20px 20px; }
+    
+    /* 🔔 鈴鐺動畫 */
     @keyframes bellShake { 0% { transform: rotate(0); } 15% { transform: rotate(15deg); } 30% { transform: rotate(-15deg); } 45% { transform: rotate(10deg); } 60% { transform: rotate(-10deg); } 75% { transform: rotate(5deg); } 85% { transform: rotate(-5deg); } 100% { transform: rotate(0); } }
     .animate-bell { animation: bellShake 1s infinite; }
-    .card-transition { transition: transform 0.1s; }
+    
+    /* 滑動與拖曳 */
+    .card-content { transition: transform 0.1s ease-out; }
+    .sortable-ghost { opacity: 0.5; background: #f1f5f9; }
   </style>
 </head>
 <body>
   <div id="root"></div>
 
-  <script type="text/babel">
-    // Firebase Config
+  <script type="text/babel" data-presets="env,react">
+    // Firebase 設定
     const firebaseConfig = {
       apiKey: "AIzaSyAHLUkaGRW7j7ZHFaTEJMKNbkMzZm218w4",
       authDomain: "official-document-system-239ab.firebaseapp.com",
@@ -52,20 +59,32 @@
     const db = firebase.firestore();
     const { useState, useEffect, useMemo, useRef } = React;
 
-    // Helper Functions
-    const formatDate = (d) => { if(!d) return ""; const p=d.split('-'); return p.length<3?d:`${parseInt(p[1])}月${parseInt(p[2])}日`; };
-    const formatTime = (iso) => { if(!iso) return ""; const d=new Date(iso); return `${d.getMonth()+1}月${d.getDate()}日 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+    // --- 工具函式 ---
+    const formatDateNoYear = (d) => { if(!d)return""; const p=d.split('-'); return p.length<3?d:`${parseInt(p[1])}月${parseInt(p[2])}日`; };
+    const formatDateTime = (iso) => { if(!iso)return""; const d=new Date(iso); return `${d.getMonth()+1}月${d.getDate()}日 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
     const getNowISO = () => { const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,16); };
     
-    // 壓縮圖片
-    const compressImg = (file) => new Promise((resolve) => {
+    // 剩餘時間計算
+    const getRemainingText = (endStr) => {
+        if(!endStr) return null;
+        const diff = new Date(endStr) - new Date();
+        if(diff < 0) return "已過期";
+        const days = Math.floor(diff/86400000);
+        if(days > 0) return `剩 ${days} 天`;
+        const hrs = Math.floor(diff/3600000);
+        const mins = Math.floor((diff%3600000)/60000);
+        return `剩 ${hrs}時${mins}分`;
+    };
+
+    // 圖片壓縮
+    const compressImage = (file) => new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
             const img = new Image();
             img.onload = () => {
                 const cvs = document.createElement('canvas');
                 let w=img.width, h=img.height;
-                if(w>800){ h=(800/w)*h; w=800; }
+                if(w>800) { h=(800/w)*h; w=800; }
                 cvs.width=w; cvs.height=h;
                 cvs.getContext('2d').drawImage(img,0,0,w,h);
                 resolve(cvs.toDataURL('image/jpeg', 0.7));
@@ -75,52 +94,41 @@
         reader.readAsDataURL(file);
     });
 
-    // --- Task Card Component ---
-    const TaskCard = ({ t, onClick, onDone, onDel, onDragStart, onDragOver, onDrop }) => {
-        const [sx, setSx] = useState(0);
-        const startX = useRef(null);
-        
-        // 提醒邏輯
-        const now = new Date();
-        const end = new Date(t.endDate);
-        const diff = end - now; // 毫秒差
-        const diffDays = Math.floor(diff/86400000);
-        const isExpired = diff < 0;
-        
-        // 判斷是否顯示鈴鐺：(有設定提醒 且 時間到了) 或 (已過期)
-        const remindMs = parseInt(t.reminderMinutes||0)*60000;
-        const showBell = (remindMs>0 && diff>0 && diff<=remindMs) || isExpired;
-        
-        // 剩餘文字
-        let remainTxt = "";
-        if(isExpired) remainTxt = "已過期";
-        else if(diffDays>0) remainTxt = `剩${diffDays}天`;
-        else {
-            const hrs = Math.floor(diff/3600000);
-            const mins = Math.floor((diff%3600000)/60000);
-            remainTxt = `剩${hrs}時${mins}分`;
-        }
+    // --- 1. 卡片元件 (包含左滑與拖曳) ---
+    const TaskItem = ({ t, onClick, onComplete, onDelete, onDragStart, onDragOver, onDrop, draggable }) => {
+        const [swipeX, setSwipeX] = useState(0);
+        const touchX = useRef(null);
 
-        const isDone = t.status==='completed';
+        // 提醒邏輯
+        const diff = new Date(t.endDate) - new Date();
+        const isExpired = diff < 0;
+        const remindMs = parseInt(t.reminderMinutes||0) * 60000;
+        // 條件：(有設提醒 且 時間到了) 或 (已過期)
+        const showBell = (remindMs > 0 && diff > 0 && diff <= remindMs) || isExpired;
+        const isDone = t.status === 'completed';
         const color = t.priority==='急件'?'bg-red-500':t.priority==='一般'?'bg-emerald-500':'bg-purple-500';
 
-        // 滑動邏輯
-        const tStart = (e) => { if(!isDone) startX.current = e.touches[0].clientX; };
+        // 手勢
+        const tStart = (e) => { if(!isDone) touchX.current = e.touches[0].clientX; };
         const tMove = (e) => {
-            if(!startX.current || isDone) return;
-            const d = e.touches[0].clientX - startX.current;
-            if(d < 0 && d > -100) setSx(d);
+            if(!touchX.current || isDone) return;
+            const d = e.touches[0].clientX - touchX.current;
+            if(d < 0 && d > -120) setSwipeX(d); // 只能左滑
         };
         const tEnd = () => {
-            if(sx < -60 && confirm("辦結此工作？")) onDone(t.id);
-            setSx(0); startX.current=null;
+            if(swipeX < -80 && confirm("確定辦結？")) onComplete(t.id);
+            setSwipeX(0); touchX.current = null;
         };
 
         return (
-            <div className={`relative mb-3 rounded-2xl overflow-hidden shadow-sm border border-slate-100 ${isDone?'opacity-50 grayscale bg-slate-50':'bg-white'}`}
-                 draggable={!isDone} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop}>
-                <div className="absolute inset-0 bg-blue-500 flex items-center justify-end pr-6"><span className="text-white font-bold"><i className="fas fa-check"></i> 辦結</span></div>
-                <div className="relative bg-white p-4 card-transition" style={{transform:`translateX(${sx}px)`}}
+            <div className={`relative mb-3 rounded-2xl overflow-hidden shadow-sm border border-slate-100 ${isDone?'opacity-60 grayscale bg-slate-50':'bg-white'}`}
+                 draggable={draggable} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop}>
+                {/* 背景辦結按鈕 */}
+                <div className="absolute inset-0 bg-blue-500 flex items-center justify-end pr-6 rounded-2xl">
+                    <span className="text-white font-bold"><i className="fas fa-check"></i> 辦結</span>
+                </div>
+                {/* 前景內容 */}
+                <div className="relative bg-white p-4 card-content" style={{transform: `translateX(${swipeX}px)`}}
                      onTouchStart={tStart} onTouchMove={tMove} onTouchEnd={tEnd} onClick={onClick}>
                     <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${color}`}></div>
                     <div className="flex justify-between items-start pl-3">
@@ -130,21 +138,21 @@
                                 {t.imageUrl && <i className="fas fa-image text-slate-400"></i>}
                             </div>
                             <div className="text-xs text-slate-500">
-                                <div>委託：{t.delegator||"無"} | {t.type}</div>
-                                <div><i className="far fa-clock"></i> {formatTime(t.startDate)} → {formatTime(t.endDate)}</div>
+                                <div>委託：{t.delegator||"未設定"} | {t.type}</div>
+                                <div><i className="far fa-clock"></i> {formatDateTime(t.startDate)} → {formatDateTime(t.endDate)}</div>
                             </div>
                         </div>
                         <div className="flex flex-col items-end gap-1">
-                            {!isDone && (
-                                <div className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded ${isExpired?'bg-red-100 text-red-600':showBell?'bg-red-50 text-red-600':'bg-slate-100 text-slate-600'}`}>
-                                    {showBell && <i className="fas fa-bell animate-bell text-red-500"></i>}
-                                    {remainTxt}
+                            {!isDone && getRemainingText(t.endDate) && (
+                                <div className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded whitespace-nowrap ${isExpired?'bg-red-100 text-red-600':showBell?'bg-red-50 text-red-600':'bg-slate-100 text-slate-600'}`}>
+                                    {showBell && <i className="fas fa-bell animate-bell"></i>}
+                                    {getRemainingText(t.endDate)}
                                 </div>
                             )}
-                            {isDone && <span className="text-xs font-bold bg-slate-200 text-slate-500 px-2 py-1 rounded">已辦結</span>}
+                            {isDone && <span className="text-xs bg-slate-200 text-slate-500 px-2 py-1 rounded font-bold">已辦結</span>}
                             <div className="flex gap-2 mt-1">
-                                {!isDone && <button onClick={(e)=>{e.stopPropagation();onDone(t.id)}} className="w-8 h-8 rounded-full bg-blue-50 text-blue-500"><i className="fas fa-check"></i></button>}
-                                <button onClick={(e)=>{e.stopPropagation();onDel(t.id)}} className="w-8 h-8 rounded-full bg-slate-100 text-slate-400"><i className="fas fa-trash"></i></button>
+                                {!isDone && <button onClick={(e)=>{e.stopPropagation();onComplete(t.id)}} className="w-8 h-8 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center"><i className="fas fa-check"></i></button>}
+                                <button onClick={(e)=>{e.stopPropagation();onDelete(t.id)}} className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center"><i className="fas fa-trash"></i></button>
                             </div>
                         </div>
                     </div>
@@ -153,255 +161,331 @@
         );
     };
 
-    // --- Main App ---
+    // --- 2. 登入畫面 ---
+    const LoginScreen = () => {
+        const [isReg, setIsReg] = useState(false);
+        const [form, setForm] = useState({email:'', pwd:''});
+        const [err, setErr] = useState("");
+        const [loading, setLoading] = useState(false);
+
+        const go = async (e) => {
+            e.preventDefault(); setErr(""); setLoading(true);
+            try {
+                if(isReg) await auth.createUserWithEmailAndPassword(form.email, form.pwd);
+                else await auth.signInWithEmailAndPassword(form.email, form.pwd);
+            } catch(e) { setErr(e.message); } finally { setLoading(false); }
+        };
+
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+                <div className="bg-white w-full max-w-sm p-8 rounded-2xl shadow-xl text-center">
+                    <div className="mb-6"><img src="./logo.jpg" className="w-24 h-24 mx-auto rounded-3xl shadow border-2"/></div>
+                    <h1 className="text-2xl font-bold text-slate-800 mb-6">業務管理系統</h1>
+                    <form onSubmit={go} className="space-y-4">
+                        <input type="email" required className="input-ios" placeholder="Email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} />
+                        <input type="password" required className="input-ios" placeholder="密碼" value={form.pwd} onChange={e=>setForm({...form,pwd:e.target.value})} />
+                        {err && <div className="text-red-500 text-sm">{err}</div>}
+                        <button disabled={loading} className="w-full bg-slate-900 text-white h-12 rounded-xl font-bold shadow">{loading?"處理中...":isReg?"註冊":"登入"}</button>
+                    </form>
+                    <div className="mt-4 text-sm text-blue-600 cursor-pointer" onClick={()=>setIsReg(!isReg)}>{isReg?"返回登入":"註冊帳號"}</div>
+                </div>
+            </div>
+        );
+    };
+
+    // --- 3. 主程式 ---
     function App() {
-      const [user, setUser] = useState(null);
-      const [view, setView] = useState("home"); // home, docs, tasks, settings
-      const [menu, setMenu] = useState(false);
-      
-      // Data
-      const [recs, setRecs] = useState([]);
-      const [tasks, setTasks] = useState([]);
-      const [meta, setMeta] = useState({authors:[], codes:[], taskTypes:[]});
-      
-      // Forms
-      const [form, setForm] = useState({id:null, date:getNowISO().split('T')[0], author:"", code:"", number:"", subject:"", docType:"一般公文", rank:"軍官", subNumber:""});
-      const [isManual, setIsManual] = useState(false);
-      const [taskForm, setTaskForm] = useState({id:null, title:"", type:"行政", delegator:"", priority:"一般", startDate:getNowISO(), endDate:getNowISO(), notes:"", reminderMinutes:"0", imageUrl:""});
-      const [showTask, setShowTask] = useState(false);
-      const [filter, setFilter] = useState("");
-      const [taskTab, setTaskTab] = useState("全部");
-
-      // Refs
-      const dragItem = useRef();
-      const dragOverItem = useRef();
-      const fileRef = useRef();
-      const imgRef = useRef();
-
-      useEffect(() => { auth.onAuthStateChanged(u => setUser(u)); }, []);
-
-      useEffect(() => {
-        if(!user) return;
-        const uRef = db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid);
+        const [user, setUser] = useState(null);
+        const [view, setView] = useState("home");
+        const [menu, setMenu] = useState(false);
+        const [recs, setRecs] = useState([]);
+        const [tasks, setTasks] = useState([]);
+        const [meta, setMeta] = useState({authors:[], codes:[], taskTypes:[]});
+        const [form, setForm] = useState({id:null, date:getNowISO().split('T')[0], author:"", code:"", number:"", subject:"", docType:"一般公文", rank:"軍官", subNumber:""});
+        const [isManual, setIsManual] = useState(false);
+        const [filter, setFilter] = useState({type:'all', val:''});
         
-        // Load Records
-        uRef.collection("records").orderBy("createdAt","desc").limit(100).onSnapshot(s => setRecs(s.docs.map(d=>({id:d.id, ...d.data()}))));
-        
-        // Load Tasks (前端排序)
-        uRef.collection("tasks").orderBy("createdAt","desc").onSnapshot(s => setTasks(s.docs.map(d=>({id:d.id, ...d.data()}))));
-        
-        // Load Meta
-        uRef.collection("metadata").doc("general").onSnapshot(d => {
-            if(d.exists) setMeta({...d.data(), taskTypes: d.data().taskTypes||['行政','訓練','後勤','人事','保養','交辦','其他']});
-            else uRef.collection("metadata").doc("general").set({authors:[], codes:[], taskTypes:['行政','訓練','後勤']});
-        });
-      }, [user]);
+        // 工作管制狀態
+        const [taskModal, setTaskModal] = useState(false);
+        const [taskForm, setTaskForm] = useState({});
+        const [taskFilter, setTaskFilter] = useState("全部");
+        const [taskSearch, setTaskSearch] = useState("");
+        const dragItem = useRef();
+        const dragOverItem = useRef();
 
-      // --- Logic: Public Docs ---
-      const autoNum = useMemo(() => {
-          const yr = String(new Date().getFullYear()-1911);
-          const nums = recs.map(r=>r.number).filter(n=>n&&n.startsWith(yr)).map(n=>parseInt(n)).filter(n=>!isNaN(n));
-          const main = nums.length? String(Math.max(...nums)+1) : yr+"0000001";
-          return main;
-      }, [recs]);
+        // 系統設定狀態
+        const [newAuth, setNewAuth] = useState("");
+        const [newType, setNewType] = useState("");
+        const [editDef, setEditDef] = useState(null);
 
-      useEffect(() => { if(!form.id && !isManual) setForm(p=>({...p, number:autoNum})); }, [recs, form.id, isManual, autoNum]);
+        const fileRef = useRef(); // Excel input
+        const imgRef = useRef();  // Image input
 
-      const saveRec = async () => {
-          if(!form.subject) return alert("請輸入主旨");
-          const uRef = db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid);
-          const pl = {...form, updatedAt: new Date().toISOString()};
-          delete pl.id;
-          if(!form.id) { pl.createdAt = new Date().toISOString(); await uRef.collection("records").add(pl); }
-          else await uRef.collection("records").doc(form.id).update(pl);
-          
-          if(form.author) uRef.collection("metadata").doc("general").update({authors: firebase.firestore.FieldValue.arrayUnion(form.author)});
-          setForm({id:null, date:form.date, author:form.author, code:form.code, number:"", subject:"", docType:"一般公文", rank:"軍官", subNumber:""});
-          setIsManual(false);
-      };
+        useEffect(() => auth.onAuthStateChanged(u => setUser(u)), []);
 
-      // --- Logic: Tasks ---
-      const saveTask = async () => {
-          if(!taskForm.title) return alert("請輸入標題");
-          const uRef = db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid).collection("tasks");
-          const pl = {...taskForm, updatedAt: new Date().toISOString()};
-          delete pl.id;
-          if(!taskForm.id) { pl.createdAt = new Date().toISOString(); pl.status="active"; pl.order=Date.now(); await uRef.add(pl); }
-          else await uRef.doc(taskForm.id).update(pl);
-          setShowTask(false);
-      };
-
-      const handleDrop = async () => {
-          if(!dragItem.current || !dragOverItem.current) return;
-          const cp = [...filTasks];
-          const item = cp.splice(dragItem.current, 1)[0];
-          cp.splice(dragOverItem.current, 0, item);
-          
-          const batch = db.batch();
-          const uRef = db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid).collection("tasks");
-          cp.forEach((t, i) => { if(t.id) batch.update(uRef.doc(t.id), {order: i}); });
-          await batch.commit();
-          dragItem.current=null; dragOverItem.current=null;
-      };
-
-      const filTasks = useMemo(() => {
-          let res = [...tasks];
-          if(taskTab!=="全部") res = res.filter(t=>t.priority===taskTab);
-          if(filter) res = res.filter(t=>t.title.includes(filter));
-          res.sort((a,b) => {
-              if(a.status==='completed' && b.status!=='completed') return 1;
-              if(a.status!=='completed' && b.status==='completed') return -1;
-              return (a.order||0) - (b.order||0);
-          });
-          return res;
-      }, [tasks, taskTab, filter]);
-
-      // --- Login View ---
-      if (!user) return (
-        <div className="min-h-screen flex items-center justify-center p-4">
-            <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm text-center">
-                <div className="mb-6"><img src="./logo.jpg" className="w-20 h-20 mx-auto rounded-2xl shadow border"/></div>
-                <h1 className="text-2xl font-bold mb-6">業務管理系統</h1>
-                <button onClick={()=>auth.signInAnonymously()} className="w-full bg-gray-800 text-white h-12 rounded-xl font-bold mb-3">訪客試用</button>
-                <div className="text-sm text-gray-400">或輸入 Email 登入 (需先在後台開啟)</div>
-                <form onSubmit={e=>{e.preventDefault(); auth.signInWithEmailAndPassword(e.target[0].value, e.target[1].value).catch(err=>alert(err.message))}} className="mt-4 space-y-3">
-                    <input type="email" placeholder="Email" className="input-ios" required/>
-                    <input type="password" placeholder="密碼" className="input-ios" required/>
-                    <button className="w-full bg-blue-600 text-white h-12 rounded-xl font-bold">登入 / 註冊</button>
-                </form>
-                <div className="mt-4 text-xs text-blue-500 cursor-pointer" onClick={e=>{const f=e.target.closest('div').previousSibling; auth.createUserWithEmailAndPassword(f[0].value, f[1].value).catch(alert)}}>沒帳號? 點此註冊</div>
-            </div>
-        </div>
-      );
-
-      return (
-        <div className="min-h-screen flex flex-col bg-dot-pattern">
-            {/* 遮罩 */}
-            {menu && <div className="fixed inset-0 bg-black/30 z-40" onClick={()=>setMenu(false)}/>}
+        useEffect(() => {
+            if(!user) return;
+            const ref = db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid);
             
-            {/* 側邊欄 */}
-            <div className={`fixed inset-y-0 left-0 w-[260px] bg-white shadow-2xl z-50 sidebar ${menu?'sidebar-open':'sidebar-closed'} flex flex-col`}>
-                <div className="bg-slate-900 text-white p-6 pt-10"><h2 className="text-xl font-bold">選單</h2><p className="text-xs opacity-50">{user.email||"訪客"}</p></div>
-                <div className="flex-1 p-4 space-y-2">
-                    {[
-                        {k:'home',n:'填寫表單',i:'pen'},
-                        {k:'docs',n:'公文系統',i:'folder'},
-                        {k:'tasks',n:'工作管制',i:'list-check'},
-                        {k:'settings',n:'系統設定',i:'cog'}
-                    ].map(x=>(
-                        <button key={x.k} onClick={()=>{setView(x.k);setMenu(false)}} className={`w-full text-left p-3 rounded-xl font-bold flex gap-3 ${view===x.k?'bg-blue-50 text-blue-600':'text-gray-600'}`}>
-                            <i className={`fas fa-${x.i} w-6 text-center`}></i> {x.n}
-                        </button>
-                    ))}
-                    <hr className="my-2"/>
-                    <button onClick={()=>auth.signOut()} className="w-full text-left p-3 text-red-500 font-bold"><i className="fas fa-sign-out-alt mr-3"></i> 登出</button>
-                </div>
-            </div>
+            // 監聽公文
+            ref.collection("records").orderBy("createdAt","desc").limit(200).onSnapshot(s => 
+                setRecs(s.docs.map(d=>({id:d.id, ...d.data()})))
+            );
+            // 監聽工作 (不使用 orderBy('order') 以免舊資料消失，改前端排)
+            ref.collection("tasks").orderBy("createdAt","desc").onSnapshot(s => 
+                setTasks(s.docs.map(d=>({id:d.id, ...d.data()})))
+            );
+            // 監聽設定
+            ref.collection("metadata").doc("general").onSnapshot(d => {
+                if(d.exists) setMeta({...d.data(), taskTypes: d.data().taskTypes||['行政','訓練','後勤','人事','保養','交辦','其他']});
+                else ref.collection("metadata").doc("general").set({authors:[], codes:[], taskTypes:['行政']});
+            });
+        }, [user]);
 
-            {/* Header */}
-            <header className="sticky top-0 bg-white/90 backdrop-blur border-b h-14 flex items-center px-4 justify-between z-30">
-                <div className="flex items-center gap-3">
-                    <button onClick={()=>setMenu(true)}><i className="fas fa-bars text-xl text-gray-700"></i></button>
-                    <h1 className="font-bold text-lg">{view==='home'?'表單':view==='docs'?'公文':view==='tasks'?'工作':'設定'}</h1>
-                </div>
-                {view==='home' && <button onClick={()=>setForm({id:null, date:getNowISO().split('T')[0], author:form.author, code:form.code, number:"", subject:"", docType:"一般公文", rank:"軍官", subNumber:""})} className="text-sm text-gray-500">重置</button>}
-            </header>
+        // --- 公文邏輯 ---
+        const nextNum = useMemo(() => {
+            const yr = String(new Date().getFullYear()-1911);
+            const nums = recs.map(r=>r.number).filter(n=>n&&n.startsWith(yr)).map(n=>parseInt(n)).filter(n=>!isNaN(n));
+            const main = nums.length ? String(Math.max(...nums)+1) : yr+"0000001";
+            const getSub = (type, rank) => {
+                if(type==="一般公文") return "";
+                const subs = recs.filter(r=>r.docType===type && r.rank===rank && r.subNumber).map(r=>parseInt(r.subNumber)).filter(n=>!isNaN(n));
+                return subs.length ? String(Math.max(...subs)+1).padStart(3,'0') : "001";
+            };
+            return { main, getSub };
+        }, [recs]);
 
-            {/* Content */}
-            <main className="flex-1 p-4 max-w-md mx-auto w-full pb-20">
-                
-                {/* 1. 表單 */}
-                {view==='home' && (
-                    <div className="space-y-4 fade-in">
-                        <div className="bg-white p-5 rounded-2xl shadow-sm border space-y-3">
-                            <div className="flex gap-2">
-                                <div className="flex-1"><label className="text-xs font-bold text-gray-500">日期</label><input type="date" className="input-ios" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></div>
-                                <div className="flex-1"><label className="text-xs font-bold text-gray-500">發文者</label><input list="auths" className="input-ios" value={form.author} onChange={e=>setForm({...form,author:e.target.value})} placeholder="選擇"/><datalist id="auths">{meta.authors.map(a=><option key={a} value={a}/>)}</datalist></div>
+        useEffect(() => {
+            if(!form.id && !isManual) setForm(p=>({...p, number: nextNum.main, subNumber: nextNum.getSub(form.docType, form.rank)}));
+        }, [recs, form.docType, form.rank, form.id, isManual, nextNum]);
+
+        const saveRec = async () => {
+            if(!form.subject) return alert("請輸入主旨");
+            const ref = db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid);
+            const pl = {...form, updatedAt: new Date().toISOString()};
+            delete pl.id;
+            if(!form.id) { pl.createdAt = new Date().toISOString(); await ref.collection("records").add(pl); }
+            else await ref.collection("records").doc(form.id).set(pl, {merge:true});
+            
+            if(form.author) ref.collection("metadata").doc("general").set({authors:firebase.firestore.FieldValue.arrayUnion(form.author), codes:firebase.firestore.FieldValue.arrayUnion(form.code)},{merge:true});
+            setForm({id:null, date:form.date, author:form.author, code:form.code, number:"", subject:"", docType:"一般公文", rank:"軍官", subNumber:""});
+            setIsManual(false); window.scrollTo(0,0);
+        };
+
+        // --- 工作邏輯 ---
+        const openTask = (t) => {
+            setTaskForm(t ? {...t, reminderMinutes: t.reminderMinutes||"0", imageUrl: t.imageUrl||""} : {id:null, title:"", type:"行政", delegator:"", priority:"一般", startDate:getNowISO(), endDate:getNowISO(), notes:"", reminderMinutes:"0", status:"active", order: Date.now()});
+            setTaskModal(true);
+        };
+
+        const saveTask = async () => {
+            if(!taskForm.title) return alert("請輸入標題");
+            const ref = db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid).collection("tasks");
+            const pl = {...taskForm, updatedAt: new Date().toISOString()};
+            const id = pl.id; delete pl.id;
+            if(id) await ref.doc(id).update(pl);
+            else { pl.createdAt = new Date().toISOString(); pl.order = Date.now(); await ref.add(pl); }
+            setTaskModal(false);
+        };
+
+        // 拖曳排序
+        const onDrop = async () => {
+            if(!dragItem.current || !dragOverItem.current) return;
+            const cp = [...filTasks];
+            const item = cp.splice(dragItem.current, 1)[0];
+            cp.splice(dragOverItem.current, 0, item);
+            
+            const batch = db.batch();
+            const ref = db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid).collection("tasks");
+            cp.forEach((t, i) => { if(t.id) batch.update(ref.doc(t.id), {order: i}); });
+            await batch.commit();
+            dragItem.current = null; dragOverItem.current = null;
+        };
+
+        const filTasks = useMemo(() => {
+            let res = [...tasks];
+            if(taskFilter!=="全部") res = res.filter(t=>t.priority===taskFilter);
+            if(taskSearch) res = res.filter(t=>t.title.includes(taskSearch));
+            res.sort((a,b) => {
+                if(a.status==='completed' && b.status!=='completed') return 1;
+                if(a.status!=='completed' && b.status==='completed') return -1;
+                const oa = a.order === undefined ? -1 : a.order;
+                const ob = b.order === undefined ? -1 : b.order;
+                return oa - ob;
+            });
+            return res;
+        }, [tasks, taskFilter, taskSearch]);
+
+        // Excel Export/Import
+        const doExport = () => {
+            if(!recs.length && !tasks.length) return alert("無資料");
+            const wb = XLSX.utils.book_new();
+            if(recs.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(recs.map(r=>({"總號":r.number,"日期":r.date,"發文者":r.author,"代字":r.code,"主旨":r.subject,"分號":r.subNumber||"","種類":r.docType,"階級":r.rank}))), "公文");
+            if(tasks.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tasks.map(t=>({"標題":t.title,"種類":t.type,"委託":t.delegator,"重要":t.priority,"開始":t.startDate,"結束":t.endDate,"備註":t.notes}))), "工作");
+            XLSX.writeFile(wb, "Backup.xlsx");
+        };
+
+        const doImport = (e) => {
+            const f = e.target.files[0]; if(!f) return;
+            if(!confirm("確定匯入？")) return;
+            const r = new FileReader();
+            r.onload = async (evt) => {
+                try {
+                    const wb = XLSX.read(evt.target.result, {type:'binary'});
+                    const ref = db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid);
+                    const rs = wb.Sheets["公文"]||wb.Sheets["公文紀錄"];
+                    if(rs) XLSX.utils.sheet_to_json(rs).forEach(r=>ref.collection("records").add({number:String(r["總號"]), date:r["日期"], author:r["發文者"], code:r["代字"], subject:r["主旨"], subNumber:String(r["分號"]||""), docType:r["種類"], rank:r["階級"], createdAt:new Date().toISOString()}));
+                    const ts = wb.Sheets["工作"]||wb.Sheets["工作管制"];
+                    if(ts) XLSX.utils.sheet_to_json(ts).forEach(t=>ref.collection("tasks").add({title:t["標題"], type:t["種類"], delegator:t["委託"], priority:t["重要"], startDate:t["開始"], endDate:t["結束"], notes:t["備註"], status:"active", order:Date.now(), createdAt:new Date().toISOString()}));
+                    alert("完成"); window.location.reload();
+                } catch(err){ alert("失敗"); }
+            };
+            r.readAsBinaryString(f);
+        };
+
+        if(!user) return <LoginScreen />;
+
+        return (
+            <div className="min-h-screen flex flex-col bg-slate-50 pb-20 bg-dot-pattern">
+                {menu && <div className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm" onClick={()=>setMenu(false)}/>}
+                <div className={`fixed inset-y-0 left-0 w-[280px] bg-white shadow-2xl z-50 sidebar ${menu?'sidebar-open':'sidebar-closed'} flex flex-col`}>
+                    <div className="bg-slate-900 text-white p-6 pt-12"><h2 className="font-bold text-xl">功能選單</h2><div className="text-xs opacity-70">{user.email}</div></div>
+                    <div className="flex-1 p-4 space-y-2">
+                        {[{k:'home',n:'首頁',i:'pen-nib'},{k:'docs',n:'公文系統',i:'folder-open'},{k:'tasks',n:'工作管制',i:'tasks'},{k:'personnel',n:'系統設定',i:'cogs'}].map(x=>(
+                            <button key={x.k} onClick={()=>{setView(x.k);setMenu(false)}} className={`w-full text-left p-3 rounded-xl font-bold flex gap-3 ${view===x.k?'bg-blue-50 text-blue-600':'text-slate-600 hover:bg-slate-50'}`}>
+                                <i className={`fas fa-${x.i} w-6 text-center`}></i> {x.n}
+                            </button>
+                        ))}
+                        <hr className="my-2"/>
+                        <button onClick={doExport} className="w-full text-left p-3 text-slate-600 font-bold"><i className="fas fa-file-export mr-3"></i> 匯出 Excel</button>
+                        <div className="relative"><input type="file" ref={fileRef} onChange={doImport} className="hidden"/><button onClick={()=>fileRef.current.click()} className="w-full text-left p-3 text-slate-600 font-bold"><i className="fas fa-file-import mr-3"></i> 匯入 Excel</button></div>
+                        <button onClick={()=>auth.signOut()} className="w-full text-left p-3 text-red-500 font-bold"><i className="fas fa-sign-out-alt mr-3"></i> 登出</button>
+                    </div>
+                </div>
+
+                <header className="sticky top-0 bg-white/90 backdrop-blur border-b h-14 flex items-center px-4 justify-between z-30">
+                    <div className="flex items-center gap-4"><button onClick={()=>setMenu(true)}><i className="fas fa-bars text-xl text-slate-700"></i></button><h1 className="font-bold text-lg text-slate-800">{view==='home'?'填寫表單':view==='docs'?'公文系統':view==='tasks'?'工作管制':'系統設定'}</h1></div>
+                    {view==='home' && <button onClick={()=>{setForm({id:null,date:form.date,author:form.author,code:form.code,number:"",subject:"",docType:"一般公文",rank:"軍官",subNumber:""});setIsManual(false)}} className="text-sm text-slate-500">重置</button>}
+                </header>
+
+                <main className="flex-1 p-4 max-w-md mx-auto w-full fade-in">
+                    {/* 1. 表單 */}
+                    {view==='home' && (
+                        <div className="space-y-4">
+                            <div className="bg-white p-5 rounded-2xl shadow-sm border space-y-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div><label className="text-xs font-bold text-slate-500">日期</label><input type="date" className="input-ios" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></div>
+                                    <div><label className="text-xs font-bold text-slate-500">發文者</label><input list="alist" className="input-ios" value={form.author} onChange={e=>{setForm({...form,author:e.target.value});if(meta.authorDefaults?.[e.target.value])setForm(p=>({...p,code:meta.authorDefaults[e.target.value]}))}} placeholder="選擇"/><datalist id="alist">{meta.authors.map(a=><option key={a} value={a}/>)}</datalist></div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div><label className="text-xs font-bold text-slate-500">代字</label><input list="clist" className="input-ios" value={form.code} onChange={e=>setForm({...form,code:e.target.value})}/><datalist id="clist">{meta.codes.map(c=><option key={c} value={c}/>)}</datalist></div>
+                                    <div className="grid grid-cols-3 gap-1">
+                                        <div className="col-span-2 relative"><label className="text-xs font-bold text-slate-500">總號</label><input type="text" className="input-ios text-right pr-8" readOnly={!isManual} value={form.number} onChange={e=>setForm({...form,number:e.target.value})}/><i onClick={()=>setIsManual(!isManual)} className={`fas fa-lock${isManual?'-open':''} absolute right-2 top-6 text-slate-400`}></i></div>
+                                        <div><label className="text-xs font-bold text-slate-500">分號</label><input type="text" className="input-ios text-center" value={form.subNumber} onChange={e=>setForm({...form,subNumber:e.target.value})}/></div>
+                                    </div>
+                                </div>
+                                <div><label className="text-xs font-bold text-slate-500">主旨</label><textarea className="w-full border rounded-xl p-3 h-20" value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})}></textarea></div>
+                                <div className="flex gap-2 overflow-x-auto pb-1">{['一般公文','人勤令','人職令'].map(t=><button key={t} onClick={()=>setForm({...form,docType:t})} className={`flex-1 py-2 text-xs rounded-lg font-bold whitespace-nowrap ${form.docType===t?'bg-white text-blue-600 shadow-sm':'text-slate-400'}`}>{t}</button>)}</div>
+                                {form.docType!=='一般公文' && <div className="flex gap-2 pb-1">{['軍官','士官','士兵'].map(r=><button key={r} onClick={()=>setForm({...form,rank:r})} className={`flex-1 py-2 text-xs rounded-lg font-bold ${form.rank===r?'bg-indigo-600 text-white':'text-slate-400'}`}>{r}</button>)}</div>}
+                                <div className="grid grid-cols-4 gap-2">
+                                    <button onClick={()=>{const k=prompt("關鍵字");if(k)setFilter({type:'search',val:k})}} className="col-span-1 rounded-xl border font-bold text-slate-600">查詢</button>
+                                    <button onClick={()=>{setIsManual(true);handleSubmit(false)}} disabled={!form.id} className="col-span-1 rounded-xl border font-bold text-blue-600 disabled:text-slate-300">修改</button>
+                                    <button onClick={()=>handleSubmit(true)} className="col-span-2 bg-slate-900 text-white h-12 rounded-xl font-bold shadow-lg">登錄</button>
+                                </div>
                             </div>
-                            <div className="flex gap-2">
-                                <div className="w-1/3"><label className="text-xs font-bold text-gray-500">代字</label><input list="codes" className="input-ios" value={form.code} onChange={e=>setForm({...form,code:e.target.value})}/><datalist id="codes">{meta.codes.map(c=><option key={c} value={c}/>)}</datalist></div>
-                                <div className="flex-1"><label className="text-xs font-bold text-gray-500">總號 ({isManual?'手':'自'})</label><div className="relative"><input type="text" className="input-ios text-right pr-8" readOnly={!isManual} value={form.number} onChange={e=>setForm({...form,number:e.target.value})}/><i onClick={()=>setIsManual(!isManual)} className={`fas fa-lock${isManual?'-open':''} absolute right-3 top-3 text-gray-400`}></i></div></div>
+                            <div>
+                                <h3 className="font-bold text-slate-800 mb-2 px-2">{filter.type==='search'?`搜尋: ${filter.val}`:'最近紀錄'} {filter.type==='search'&&<span onClick={()=>setFilter({type:'all'})} className="text-blue-500 text-xs ml-2">清除</span>}</h3>
+                                {displayRecords.slice(0,20).map(r=>(
+                                    <div key={r.id} onClick={()=>{setForm({...r});setIsManual(true);window.scrollTo(0,0)}} className="bg-white p-4 mb-2 rounded-2xl border border-slate-100 shadow-sm">
+                                        <div className="flex justify-between font-mono font-bold text-blue-600"><span>#{r.number}</span><span className="text-xs text-slate-400 font-sans">{formatDateNoYear(r.date)}</span></div>
+                                        <div className="font-bold text-slate-800 my-1 line-clamp-1">{r.subject}</div>
+                                        <div className="text-xs text-slate-500"><span className="bg-slate-100 px-2 py-1 rounded">{r.author}</span> {r.docType!=='一般公文'&&<span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded">{r.docType} {r.subNumber}</span>}</div>
+                                    </div>
+                                ))}
                             </div>
-                            <div><label className="text-xs font-bold text-gray-500">主旨</label><textarea className="w-full border rounded-xl p-3 h-20" value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})}></textarea></div>
-                            <button onClick={saveRec} className="w-full bg-slate-900 text-white h-12 rounded-xl font-bold shadow">登錄公文</button>
                         </div>
-                        <div className="space-y-3">
-                            <h3 className="font-bold text-gray-700">最近紀錄</h3>
-                            {recs.slice(0,10).map(r=>(
-                                <div key={r.id} onClick={()=>setForm({...r})} className="bg-white p-3 rounded-xl border shadow-sm">
-                                    <div className="flex justify-between font-mono font-bold text-blue-600"><span>#{r.number}</span> <span className="text-xs text-gray-400 font-sans">{formatDate(r.date)}</span></div>
-                                    <div className="text-sm font-bold my-1">{r.subject}</div>
-                                    <div className="text-xs bg-gray-100 inline-block px-2 py-1 rounded">{r.author}</div>
+                    )}
+
+                    {/* 2. 公文系統 */}
+                    {view==='docs' && (
+                        <div className="space-y-4">
+                            <div className="flex bg-slate-200 p-1 rounded-xl">{['人勤令','人職令'].map(t=><button key={t} onClick={()=>setDocTab(t)} className={`flex-1 py-2 rounded-lg text-sm font-bold ${docTab===t?'bg-white text-blue-600 shadow-sm':'text-slate-500'}`}>{t}</button>)}</div>
+                            {docSystemRecords.map(r=>(
+                                <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex justify-between items-start">
+                                    <div><div className="text-xs text-slate-400 mb-1">{formatDateNoYear(r.date)}</div><div className="font-bold text-lg mb-1">{r.subject}</div><div className="text-sm bg-slate-100 px-2 py-0.5 rounded inline-block">{r.author} ({r.rank})</div></div>
+                                    <div className="text-right pl-2"><div className="text-[10px] text-slate-400">分號</div>{editingSubNumId===r.id?(<div className="flex gap-1"><input className="w-16 border rounded text-center" value={editingSubNumVal} onChange={e=>setEditingSubNumVal(e.target.value)} autoFocus /><button onClick={saveSubNumber} className="text-green-500"><i className="fas fa-check"></i></button></div>):(<div onClick={()=>{setEditingSubNumId(r.id);setEditingSubNumVal(r.subNumber||"")}} className="font-mono font-bold text-2xl text-blue-900 border-b border-transparent hover:border-blue-300">{r.subNumber}</div>)}</div>
                                 </div>
                             ))}
                         </div>
+                    )}
+
+                    {/* 3. 工作管制 */}
+                    {view==='tasks' && (
+                        <div className="space-y-4">
+                            <div className="bg-white p-2 rounded-xl shadow-sm space-y-2">
+                                <div className="relative"><i className="fas fa-search absolute left-3 top-3 text-slate-400"></i><input className="w-full bg-slate-100 rounded-xl pl-9 pr-4 py-2 outline-none" placeholder="搜尋..." value={taskSearch} onChange={e=>setTaskSearch(e.target.value)}/></div>
+                                <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">{['全部','急件','一般','交辦'].map(f=><button key={f} onClick={()=>setTaskFilter(f)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${taskFilter===f?'bg-slate-800 text-white':'bg-slate-100 text-slate-500'}`}>{f}</button>)}</div>
+                            </div>
+                            <div className="pb-20">
+                                {filTasks.map((t,i)=>(
+                                    <TaskItem key={t.id} t={t} onClick={()=>openTask(t)} onComplete={(id)=>db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).update({status:'completed'})} onDelete={(id)=>confirm("刪除?")&&db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).delete()}
+                                        draggable={taskFilter==='全部'&&!taskSearch&&t.status!=='completed'} onDragStart={()=>(dragItem.current=i)} onDragOver={(e)=>{e.preventDefault();dragOverItem.current=i}} onDrop={onDrop}
+                                    />
+                                ))}
+                            </div>
+                            <button onClick={()=>openTask(null)} className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl"><i className="fas fa-plus"></i></button>
+                        </div>
+                    )}
+
+                    {/* 4. 系統設定 */}
+                    {view==='personnel' && (
+                        <div className="space-y-6">
+                            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                                <div className="p-4 border-b bg-slate-50 font-bold text-slate-700">業務種類</div>
+                                <div className="p-4 space-y-3">
+                                    <div className="flex gap-2"><input className="input-ios" placeholder="新增種類..." value={newType} onChange={e=>setNewType(e.target.value)} /><button onClick={()=>{if(newType)db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({taskTypes:firebase.firestore.FieldValue.arrayUnion(newType)});setNewType("")}} className="bg-slate-800 text-white px-4 rounded-lg font-bold">新增</button></div>
+                                    <div className="flex flex-wrap gap-2">{meta.taskTypes.map(t=><div key={t} className="bg-slate-100 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2">{t} <i onClick={()=>confirm("刪除?")&&db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({taskTypes:firebase.firestore.FieldValue.arrayRemove(t)})} className="fas fa-times text-slate-400 cursor-pointer"></i></div>)}</div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                                <div className="p-4 border-b bg-slate-50 font-bold text-slate-700">人員設定</div>
+                                <div className="p-4 space-y-3">
+                                    <div className="flex gap-2"><input className="input-ios" placeholder="新增人員..." value={newAuth} onChange={e=>setNewAuth(e.target.value)} /><button onClick={()=>{if(newAuth)db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({authors:firebase.firestore.FieldValue.arrayUnion(newAuth)});setNewAuth("")}} className="bg-blue-600 text-white px-4 rounded-lg font-bold">新增</button></div>
+                                    <div className="divide-y">{meta.authors.map(a=><div key={a} className="py-3 flex justify-between items-center"><div><div className="font-bold text-lg">{a}</div><div className="text-xs text-slate-400 cursor-pointer" onClick={()=>setEditDef(a)}>{editDef===a?(<select className="border rounded" onChange={e=>{saveAuthorDefault(a,e.target.value);setEditDef(null)}} onBlur={()=>setEditDef(null)} autoFocus><option value="">無</option>{meta.codes.map(c=><option key={c} value={c}>{c}</option>)}</select>):`預設: ${meta.authorDefaults?.[a]||"無"}`}</div></div><i onClick={()=>confirm("刪除?")&&db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({authors:firebase.firestore.FieldValue.arrayRemove(a)})} className="fas fa-trash-alt text-slate-300 hover:text-red-500 cursor-pointer p-2"></i></div>)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </main>
+
+                {/* Task Modal */}
+                {taskModal && (
+                    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+                        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={()=>setTaskModal(false)}></div>
+                        <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 relative z-10 animate-[fadeIn_0.3s_ease-out] space-y-4 max-h-[80vh] overflow-y-auto">
+                            <div className="flex justify-between items-center"><h2 className="text-xl font-bold">{taskForm.id?"編輯":"新增"}</h2><i onClick={()=>setTaskModal(false)} className="fas fa-times text-xl p-2 text-slate-400"></i></div>
+                            <div><label className="text-xs font-bold text-slate-500">名稱</label><input className="input-ios" value={taskForm.title} onChange={e=>setTaskForm({...taskForm,title:e.target.value})} /></div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div><label className="text-xs font-bold text-slate-500">種類</label><div className="select-wrapper"><select className="input-ios" value={taskForm.type} onChange={e=>setTaskForm({...taskForm,type:e.target.value})}>{meta.taskTypes.map(t=><option key={t} value={t}>{t}</option>)}</select></div></div>
+                                <div><label className="text-xs font-bold text-slate-500">重要</label><div className="select-wrapper"><select className="input-ios" value={taskForm.priority} onChange={e=>setTaskForm({...taskForm,priority:e.target.value})}><option value="急件">🔴 急件</option><option value="一般">🟢 一般</option><option value="交辦">🟣 交辦</option></select></div></div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div><label className="text-xs font-bold text-slate-500">開始</label><input type="datetime-local" className="input-ios text-xs px-1" value={taskForm.startDate} onChange={e=>setTaskForm({...taskForm,startDate:e.target.value})} /></div>
+                                <div><label className="text-xs font-bold text-slate-500">結束</label><input type="datetime-local" className="input-ios text-xs px-1" value={taskForm.endDate} onChange={e=>setTaskForm({...taskForm,endDate:e.target.value})} /></div>
+                            </div>
+                            <div><label className="text-xs font-bold text-slate-500">提醒</label><div className="select-wrapper"><select className="input-ios" value={taskForm.reminderMinutes} onChange={e=>setTaskForm({...taskForm,reminderMinutes:e.target.value})}><option value="0">不提醒</option><option value="10">10分前</option><option value="30">30分前</option><option value="60">1小時前</option><option value="1440">1天前</option></select></div></div>
+                            <div className="relative">
+                                <label className="text-xs font-bold text-slate-500">備註/圖片</label>
+                                <textarea className="w-full border rounded-xl p-3 h-24" value={taskForm.notes} onChange={e=>setTaskForm({...taskForm,notes:e.target.value})}></textarea>
+                                <div className="absolute bottom-3 right-3"><input type="file" ref={imgRef} accept="image/*" className="hidden" onChange={async e=>{if(e.target.files[0]){const b64=await compressImage(e.target.files[0]);setTaskForm({...taskForm,imageUrl:b64})}}} /><button onClick={()=>imgRef.current.click()} className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-slate-600"><i className="fas fa-camera"></i></button></div>
+                            </div>
+                            {taskForm.imageUrl && <div className="relative mt-2"><img src={taskForm.imageUrl} className="h-32 rounded-xl object-cover border" /><i onClick={()=>setTaskForm({...taskForm,imageUrl:""})} className="fas fa-times absolute top-1 right-1 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center p-1"></i></div>}
+                            <button onClick={saveTask} className="w-full bg-blue-600 text-white h-12 rounded-xl font-bold shadow-lg">儲存</button>
+                        </div>
                     </div>
                 )}
-
-                {/* 2. 工作管制 */}
-                {view==='tasks' && (
-                    <div className="space-y-4 fade-in">
-                        <div className="bg-white p-2 rounded-xl shadow-sm flex gap-2 overflow-x-auto no-scrollbar">
-                            {['全部','急件','一般','交辦'].map(t=><button key={t} onClick={()=>setTaskTab(t)} className={`px-4 py-1 rounded-lg text-sm font-bold whitespace-nowrap ${taskTab===t?'bg-slate-800 text-white':'bg-gray-100 text-gray-500'}`}>{t}</button>)}
-                        </div>
-                        <input type="text" placeholder="搜尋..." className="input-ios" value={filter} onChange={e=>setFilter(e.target.value)}/>
-                        
-                        <div className="space-y-3">
-                            {filTasks.map((t,i)=>(
-                                <TaskCard key={t.id} t={t} 
-                                    onClick={()=>{setTaskForm(t);setShowTask(true)}}
-                                    onDone={(id)=>db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).update({status:'completed'})}
-                                    onDel={(id)=>confirm("刪除?")&&db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).delete()}
-                                    onDragStart={()=>dragItem.current=i} onDragOver={(e)=>{e.preventDefault();dragOverItem.current=i}} onDrop={handleDrop}
-                                />
-                            ))}
-                            {filTasks.length===0 && <div className="text-center text-gray-400 py-10">無工作</div>}
-                        </div>
-                        <button onClick={()=>{setTaskForm({id:null, title:"", type:"行政", delegator:"", priority:"一般", startDate:getNowISO(), endDate:getNowISO(), notes:"", reminderMinutes:"0", imageUrl:""});setShowTask(true)}} className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl text-2xl flex items-center justify-center"><i className="fas fa-plus"></i></button>
-                    </div>
-                )}
-
-                {/* 3. 系統設定 (簡易版) */}
-                {view==='settings' && (
-                    <div className="bg-white p-4 rounded-2xl shadow-sm fade-in">
-                        <h2 className="font-bold mb-4">人員管理</h2>
-                        <div className="flex gap-2 mb-4"><input id="newAuth" className="input-ios" placeholder="姓名"/><button onClick={()=>{const v=document.getElementById('newAuth').value; if(v) db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({authors:firebase.firestore.FieldValue.arrayUnion(v)})}} className="bg-blue-600 text-white px-4 rounded-xl">新增</button></div>
-                        <div className="flex flex-wrap gap-2">{meta.authors.map(a=><span key={a} className="bg-gray-100 px-3 py-1 rounded-lg text-sm">{a} <i onClick={()=>confirm("刪除?")&&db.collection("artifacts").doc(APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({authors:firebase.firestore.FieldValue.arrayRemove(a)})} className="fas fa-times ml-2 text-gray-400 cursor-pointer"></i></span>)}</div>
-                    </div>
-                )}
-
-                {/* 公文系統 (簡易列表) */}
-                {view==='docs' && <div className="text-center text-gray-400 mt-10">請至首頁表單或匯出 Excel 查看詳細公文</div>}
-
-            </main>
-
-            {/* Task Modal */}
-            {showTask && (
-                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50" onClick={()=>setShowTask(false)}>
-                    <div className="bg-white w-full max-w-md p-6 rounded-t-3xl sm:rounded-3xl space-y-4" onClick={e=>e.stopPropagation()}>
-                        <div className="flex justify-between items-center"><h2 className="text-xl font-bold">{taskForm.id?"編輯":"新增"}</h2><i onClick={()=>setShowTask(false)} className="fas fa-times text-xl p-2"></i></div>
-                        <div><label className="text-xs font-bold text-gray-500">標題</label><input className="input-ios" value={taskForm.title} onChange={e=>setTaskForm({...taskForm,title:e.target.value})}/></div>
-                        <div className="flex gap-2">
-                            <div className="flex-1"><label className="text-xs font-bold text-gray-500">種類</label><select className="input-ios" value={taskForm.type} onChange={e=>setTaskForm({...taskForm,type:e.target.value})}>{meta.taskTypes.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
-                            <div className="flex-1"><label className="text-xs font-bold text-gray-500">重要</label><select className="input-ios" value={taskForm.priority} onChange={e=>setTaskForm({...taskForm,priority:e.target.value})}><option value="急件">🔴 急件</option><option value="一般">🟢 一般</option><option value="交辦">🟣 交辦</option></select></div>
-                        </div>
-                        <div className="flex gap-2">
-                            <div className="flex-1"><label className="text-xs font-bold text-gray-500">開始</label><input type="datetime-local" className="input-ios text-xs" value={taskForm.startDate} onChange={e=>setTaskForm({...taskForm,startDate:e.target.value})}/></div>
-                            <div className="flex-1"><label className="text-xs font-bold text-gray-500">結束</label><input type="datetime-local" className="input-ios text-xs" value={taskForm.endDate} onChange={e=>setTaskForm({...taskForm,endDate:e.target.value})}/></div>
-                        </div>
-                        <div><label className="text-xs font-bold text-gray-500">提醒</label><select className="input-ios" value={taskForm.reminderMinutes} onChange={e=>setTaskForm({...taskForm,reminderMinutes:e.target.value})}><option value="0">不提醒</option><option value="30">30分前</option><option value="60">1小時前</option><option value="1440">1天前</option></select></div>
-                        <div className="relative">
-                            <label className="text-xs font-bold text-gray-500">備註 / 圖片</label>
-                            <textarea className="w-full border rounded-xl p-3 h-24" value={taskForm.notes} onChange={e=>setTaskForm({...taskForm,notes:e.target.value})}></textarea>
-                            <div className="absolute bottom-2 right-2"><input type="file" ref={fileRef} className="hidden" accept="image/*" onChange={async e=>{if(e.target.files[0]){const b64=await compressImg(e.target.files[0]);setTaskForm({...taskForm,imageUrl:b64})}}} /><button onClick={()=>fileRef.current.click()} className="w-8 h-8 bg-gray-200 rounded-full"><i className="fas fa-camera"></i></button></div>
-                        </div>
-                        {taskForm.imageUrl && <div className="relative"><img src={taskForm.imageUrl} className="h-32 rounded-xl object-cover"/><i onClick={()=>setTaskForm({...taskForm,imageUrl:""})} className="fas fa-times absolute top-1 right-1 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center"></i></div>}
-                        <button onClick={saveTask} className="w-full bg-blue-600 text-white h-12 rounded-xl font-bold">儲存</button>
-                    </div>
-                </div>
-            )}
-        </div>
-      );
+            </div>
+        );
     }
 
     const root = ReactDOM.createRoot(document.getElementById("root"));

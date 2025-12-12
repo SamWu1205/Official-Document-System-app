@@ -11,32 +11,19 @@
   <link rel="apple-touch-icon" href="./logo.jpg" />
 
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
-  <script>
-    window.onerror = function(message, source, lineno, colno, error) {
-      document.getElementById('root').innerHTML = 
-        '<div style="padding:20px; color:red; font-size:16px; font-family:sans-serif;">' +
-        '<h2 style="font-size:24px; margin-bottom:10px;">⚠️ 系統發生錯誤</h2>' +
-        '<p><strong>錯誤訊息：</strong> ' + message + '</p>' +
-        '<p><strong>位置：</strong> 第 ' + lineno + ' 行</p>' +
-        '<p>請截圖此畫面並提供給開發人員。</p>' +
-        '</div>';
-    };
-  </script>
-
   <style>
-    /* iPhone 優化設置 */
+    /* 優化設定 */
     * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
     body { 
       background-color: #f8fafc;
@@ -49,7 +36,7 @@
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-    /* iOS 風格輸入框 */
+    /* 輸入框樣式 */
     .input-ios {
       height: 48px; width: 100%; font-size: 16px; padding: 0 12px;
       border-radius: 10px; border: 1px solid #e2e8f0; background-color: #fff;
@@ -64,7 +51,7 @@
       transform: translateY(-50%); color: #94a3b8; pointer-events: none;
     }
 
-    /* 動畫類 */
+    /* 動畫與特效 */
     .sidebar { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
     .sidebar-closed { transform: translateX(-100%); }
     .sidebar-open { transform: translateX(0); }
@@ -74,20 +61,27 @@
     
     .bg-dot-pattern { background-image: radial-gradient(#cbd5e1 1px, transparent 1px); background-size: 20px 20px; }
     
+    /* 🔔 鈴鐺搖晃動畫 */
     @keyframes bellShake {
       0% { transform: rotate(0); } 15% { transform: rotate(15deg); } 30% { transform: rotate(-15deg); }
       45% { transform: rotate(10deg); } 60% { transform: rotate(-10deg); } 75% { transform: rotate(5deg); }
       85% { transform: rotate(-5deg); } 100% { transform: rotate(0); }
     }
     .animate-bell { animation: bellShake 1s ease-in-out infinite; }
+    
+    /* 卡片滑動過渡 */
     .card-content { transition: transform 0.1s ease-out; }
   </style>
 </head>
 <body>
-  <div id="root" class="flex h-screen items-center justify-center text-slate-400">系統啟動中...</div>
+  <div id="root">
+    <div class="flex h-screen items-center justify-center text-slate-400 font-bold">
+      <i class="fas fa-circle-notch fa-spin mr-2"></i> 系統啟動中...
+    </div>
+  </div>
 
   <script type="text/babel" data-presets="env,react">
-    // 3. Firebase 設定
+    // --- 1. Firebase 初始化 ---
     const firebaseConfig = {
       apiKey: "AIzaSyAHLUkaGRW7j7ZHFaTEJMKNbkMzZm218w4",
       authDomain: "official-document-system-239ab.firebaseapp.com",
@@ -107,7 +101,7 @@
     const db = firebase.firestore();
     const { useState, useEffect, useMemo, useRef } = React;
 
-    // --- 工具函數 ---
+    // --- 2. 工具函數 ---
     const formatDateNoYear = (dateStr) => {
        if(!dateStr) return "";
        const parts = dateStr.split('-');
@@ -171,7 +165,7 @@
         });
     };
 
-    // --- 元件：工作管制卡片 (TaskItem) ---
+    // --- 3. 元件：工作管制卡片 (TaskItem) ---
     const TaskItem = ({ task, onClick, onComplete, onDelete, onDragStart, onDragOver, onDrop, isDraggable }) => {
         const [swipeX, setSwipeX] = useState(0);
         const touchStartX = useRef(null);
@@ -195,6 +189,7 @@
             if (!touchStartX.current || isCompleted) return;
             const currentX = e.touches[0].clientX;
             const diff = currentX - touchStartX.current;
+            // 限制只能左滑
             if (diff < 0 && diff > -120) {
                 setSwipeX(diff);
             }
@@ -202,6 +197,7 @@
 
         const handleTouchEnd = () => {
             if (!touchStartX.current || isCompleted) return;
+            // 滑動超過 80px 觸發辦結
             if (swipeX < -80) {
                 if(confirm("確定辦結此工作？")) {
                     onComplete(task.id);
@@ -278,7 +274,7 @@
         );
     };
 
-    // --- 元件：登入畫面 (LoginScreen) ---
+    // --- 4. 元件：登入畫面 ---
     const LoginScreen = () => {
       const [isRegister, setIsRegister] = useState(false);
       const [email, setEmail] = useState("");
@@ -337,7 +333,7 @@
       );
     };
 
-    // --- 主程式 App ---
+    // --- 5. 主程式 App ---
     function App() {
       // 狀態
       const [user, setUser] = useState(null);
@@ -556,6 +552,7 @@
             const data = evt.target.result; const wb = XLSX.read(data, { type: 'binary' });
             const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
             const recSheet = wb.Sheets["公文紀錄"]; const taskSheet = wb.Sheets["工作管制"];
+            
             let count = 0;
             if(recSheet) {
                XLSX.utils.sheet_to_json(recSheet).forEach(r => { 
@@ -582,11 +579,24 @@
                    }
                });
             }
-            alert(`匯入完成，共 ${count} 筆資料`); window.location.reload();
+            alert(`匯入完成，共 ${count} 筆資料`); 
+            window.location.reload();
           } catch(err){ alert("失敗: " + err.message); } finally{ setProcessing(false); e.target.value=null; }
         };
         reader.readAsBinaryString(file);
       };
+
+      // 渲染列表輔助
+      const displayRecords = useMemo(() => {
+        let res = [...records];
+        if (filter.type === 'search') { 
+            const k=(filter.value||"").toLowerCase(); 
+            res=res.filter(r=>(r.subject||"").toLowerCase().includes(k)||(r.number||"").toLowerCase().includes(k)); 
+        }
+        return res.sort((a,b) => sortOrder==='desc' ? parseInt(b.number)-parseInt(a.number) : parseInt(a.number)-parseInt(b.number));
+      }, [records, filter, sortOrder]);
+      
+      const docSystemRecords = useMemo(() => records.filter(r => r.docType === docTab), [records, docTab]);
 
       // --- Render 渲染層 ---
       if (!user) return <LoginScreen />;
@@ -634,6 +644,7 @@
           {currentView === 'home' && (
             <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-5 fade-in">
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
+                 {/* ... 表單內容 ... */}
                  <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1"><label className="text-xs font-bold text-slate-500 ml-1">日期</label><div className="relative h-12"><div className="absolute inset-0 flex items-center px-3 border border-slate-200 rounded-xl bg-white text-slate-800 pointer-events-none">{form.date?formatDateNoYear(form.date):"選擇"}</div><input type="date" className="absolute inset-0 w-full h-full opacity-0 z-10" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} /></div></div>
                     <div className="space-y-1"><label className="text-xs font-bold text-slate-500 ml-1">發文者</label><div className="select-wrapper"><input type="text" list="authList" className="input-ios" placeholder="選擇" value={form.author} onChange={e=>{setForm({...form,author:e.target.value}); if(meta.authorDefaults?.[e.target.value]) setForm(p=>({...p,code:meta.authorDefaults[e.target.value]}))}} /><datalist id="authList">{meta.authors.map(a=><option key={a} value={a}/>)}</datalist></div></div>
@@ -646,10 +657,12 @@
                     </div>
                  </div>
                  <div className="space-y-1"><label className="text-xs font-bold text-slate-500 ml-1">主旨</label><textarea rows="2" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-3" value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})}></textarea></div>
+                 
                  <div className="pt-2 space-y-3">
                     <div className="flex gap-2 p-1 bg-slate-100 rounded-lg overflow-x-auto">{['一般公文','人勤令','人職令'].map(t=><button key={t} onClick={()=>setForm({...form,docType:t})} className={`flex-1 py-2 text-xs rounded-md font-bold whitespace-nowrap ${form.docType===t?'bg-white text-blue-600 shadow-sm':'text-slate-400'}`}>{t}</button>)}</div>
                     {form.docType!=='一般公文' && <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">{['軍官','士官','士兵'].map(r=><button key={r} onClick={()=>setForm({...form,rank:r})} className={`flex-1 py-2 text-xs rounded-md font-bold ${form.rank===r?'bg-indigo-600 text-white':'text-slate-400'}`}>{r}</button>)}</div>}
                  </div>
+                 
                  <div className="grid grid-cols-4 gap-2 pt-2">
                     <button onClick={()=>{const k=prompt("關鍵字");if(k)setFilter({type:'search',value:k})}} className="col-span-1 h-12 rounded-xl border font-bold bg-white text-slate-600">查詢</button>
                     <button onClick={()=>{setIsManualNumber(true);handleSubmit(false)}} disabled={!form.id} className={`col-span-1 h-12 rounded-xl border font-bold ${form.id?'bg-blue-50 text-blue-600':'bg-slate-50 text-slate-300'}`}>修改</button>

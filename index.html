@@ -2,8 +2,13 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+  />
   <title>業務管理系統</title>
+  <link rel="icon" href="./logo.jpg" />
+  <link rel="apple-touch-icon" href="./logo.jpg" />
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -15,165 +20,1263 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    /* iPhone 優化設置 */
+    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+    body { 
+      background-color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; 
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    /* iOS 風格輸入框 */
+    .input-ios {
+      height: 48px;
+      width: 100%;
+      font-size: 16px; 
+      padding: 0 12px;
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
+      background-color: #fff;
+      appearance: none;
+      transition: all 0.2s;
+    }
+    .input-ios:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+      outline: none;
+    }
+    
+    .select-wrapper { position: relative; }
+    .select-wrapper::after {
+      content: '\f078';
+      font-family: 'Font Awesome 6 Free';
+      font-weight: 900;
+      font-size: 12px;
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #94a3b8;
+      pointer-events: none;
+    }
+
+    /* 側邊欄動畫 */
+    .sidebar { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    .sidebar-closed { transform: translateX(-100%); }
+    .sidebar-open { transform: translateX(0); }
+    .overlay { transition: opacity 0.3s ease; }
+
+    @keyframes copySuccess {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.2); color: #10b981; }
+      100% { transform: scale(1); }
+    }
+    .animate-copy { animation: copySuccess 0.3s ease-out; }
+    
+    .fade-in { animation: fadeIn 0.4s ease-in-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* 點狀背景圖案 */
+    .bg-dot-pattern {
+      background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+
+    /* 鈴鐺搖晃動畫 */
+    @keyframes bellShake {
+      0% { transform: rotate(0); }
+      15% { transform: rotate(15deg); }
+      30% { transform: rotate(-15deg); }
+      45% { transform: rotate(10deg); }
+      60% { transform: rotate(-10deg); }
+      75% { transform: rotate(5deg); }
+      85% { transform: rotate(-5deg); }
+      100% { transform: rotate(0); }
+    }
+    .animate-bell { animation: bellShake 1s ease-in-out infinite; }
+  </style>
 </head>
-<body class="bg-slate-50">
-<div id="root"></div>
+<body>
+  <div id="root"></div>
 
-<script type="text/babel">
-/* ================= Firebase ================= */
-const firebaseConfig = {
-  apiKey: "AIzaSyAHLUkaGRW7j7ZHFaTEJMKNbkMzZm218w4",
-  authDomain: "official-document-system-239ab.firebaseapp.com",
-  projectId: "official-document-system-239ab",
-};
-firebase.initializeApp(firebaseConfig);
+  <script type="text/babel" data-presets="env,react">
+    // Firebase 設定
+    const firebaseConfig = {
+      apiKey: "AIzaSyAHLUkaGRW7j7ZHFaTEJMKNbkMzZm218w4",
+      authDomain: "official-document-system-239ab.firebaseapp.com",
+      projectId: "official-document-system-239ab",
+      storageBucket: "official-document-system-239ab.firebasestorage.app",
+      messagingSenderId: "285835980582",
+      appId: "1:285835980582:web:feb116841184884f685be7",
+      measurementId: "G-B9R46YLGXQ",
+    };
+    const CURRENT_APP_ID = "dispatch-system-pro-v1";
 
-const auth = firebase.auth();
-const db = firebase.firestore();
-const CURRENT_APP_ID = "dispatch-system-pro-v1";
+    try {
+      if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    } catch (e) { console.error("Firebase Init Error", e); }
 
-/* ================= Auth Context ================= */
-const AuthContext = React.createContext(null);
-const useAuth = () => React.useContext(AuthContext);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    const { useState, useEffect, useMemo, useRef } = React;
 
-function AuthProvider({ children }) {
-  const [user, setUser] = React.useState(null);
-  const [checking, setChecking] = React.useState(true);
+    // --- 日期與時間處理工具 ---
 
-  React.useEffect(() => {
-    const unsub = auth.onAuthStateChanged(u => {
-      setUser(u);
-      setChecking(false);
-    });
-    return () => unsub();
-  }, []);
+    // 格式化日期 (隱藏年份)
+    const formatDateNoYear = (dateStr) => {
+       if(!dateStr) return "";
+       const parts = dateStr.split('-');
+       if(parts.length < 3) return dateStr;
+       return `${parseInt(parts[1], 10)}月${parseInt(parts[2], 10)}日`;
+    };
+    // 格式化日期+時間 (例如: 12月10日 14:30)
+    const formatDateTime = (isoStr) => {
+       if (!isoStr) return "";
+       const date = new Date(isoStr);
+       const month = date.getMonth() + 1;
+       const day = date.getDate();
+       const hours = String(date.getHours()).padStart(2, '0');
+       const mins = String(date.getMinutes()).padStart(2, '0');
+       return `${month}月${day}日 ${hours}:${mins}`;
+    };
 
-  return (
-    <AuthContext.Provider value={{ user, checking }}>
-      {children}
-    </AuthContext.Provider>
-  );
-}
+    // 取得當前時間的 ISO 字串 (用於 input datetime-local 預設值)
+    const getCurrentDateTimeISO = () => {
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        return now.toISOString().slice(0, 16);
+    };
 
-/* ================= Records Context ================= */
-const RecordsContext = React.createContext(null);
-const useRecords = () => React.useContext(RecordsContext);
+    // 計算剩餘時間字串
+    const getRemainingText = (endDateStr) => {
+      if (!endDateStr) return null;
+      const now = new Date();
+      const end = new Date(endDateStr);
+      const diffMs = end - now;
+      if (diffMs < 0) return "已過期";
 
-function RecordsProvider({ children }) {
-  const { user } = useAuth();
-  const [records, setRecords] = React.useState([]);
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      if (diffDays > 0) return `剩 ${diffDays} 天`;
+      if (diffHours > 0) return `剩 ${diffHours} 時 ${diffMins} 分`;
+      return `剩 ${diffMins} 分`;
+    };
 
-  React.useEffect(() => {
-    if (!user) {
-      setRecords([]);
-      return;
+    // 圖片壓縮工具
+    const compressImage = (file, maxWidth = 800, quality = 0.7) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxWidth) {
+                        height = (maxWidth / width) * height;
+                        width = maxWidth;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+                img.onerror = (err) => reject(err);
+            };
+            reader.onerror = (err) => reject(err);
+        });
+    };
+
+    // --- 登入畫面 ---
+    const LoginScreen = () => {
+      const [isRegister, setIsRegister] = useState(false);
+      const [email, setEmail] = useState("");
+      const [password, setPassword] = useState("");
+      const [error, setError] = useState("");
+      const [loading, setLoading] = useState(false);
+      const handleAuth = async (e) => {
+        e.preventDefault();
+        setError("");
+        setLoading(true);
+        try {
+          if (isRegister) {
+            await auth.createUserWithEmailAndPassword(email, password);
+          } else {
+            await auth.signInWithEmailAndPassword(email, password);
+          }
+        } catch (err) {
+          let msg = "發生錯誤";
+          if(err.code === 'auth/email-already-in-use') msg = "此 Email 已被註冊";
+          else if(err.code === 'auth/wrong-password') msg = "密碼錯誤";
+          else if(err.code === 'auth/user-not-found') msg = "找不到此帳號";
+          else if(err.code === 'auth/weak-password') msg = "密碼太弱";
+          setError(msg);
+        } finally {
+          setLoading(false);
+        }
+      };
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+          <div className="bg-white w-full max-w-sm p-8 rounded-2xl shadow-xl fade-in">
+             <div className="text-center mb-8">
+               <div className="w-24 h-24 mx-auto mb-4 rounded-3xl overflow-hidden shadow-xl border-2 border-slate-100">
+                 <img src="./logo.jpg" alt="Logo" className="w-full h-full object-cover" />
+               </div>
+               <h1 className="text-2xl font-bold text-slate-800">業務管理系統</h1>
+               <p className="text-slate-400 text-sm mt-1">
+                 {isRegister ? "建立您的雲端帳戶" : "登入以同步資料"}
+               </p>
+             </div>
+      
+             <form onSubmit={handleAuth} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">Email</label>
+                  <input type="email" required className="input-ios" 
+                    value={email} onChange={e=>setEmail(e.target.value)} placeholder="name@example.com" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">密碼</label>
+                  <input type="password" required className="input-ios" 
+                    value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" />
+                </div>
+                {error && <div className="text-red-500 text-sm bg-red-50 p-2 rounded-lg text-center"><i className="fas fa-exclamation-circle mr-1"></i>{error}</div>}
+                <button type="submit" disabled={loading}
+                  className="w-full bg-slate-900 text-white font-bold h-12 rounded-xl shadow-lg active:scale-95 transition flex items-center justify-center">
+                  {loading ? <i className="fas fa-circle-notch fa-spin"></i> : (isRegister ? "註冊帳號" : "登入")}
+                </button>
+             </form>
+             <div className="mt-6 text-center">
+               <button onClick={()=>setIsRegister(!isRegister)} className="text-sm text-blue-600 font-bold hover:underline">
+                 {isRegister ? "已有帳號？返回登入" : "還沒帳號？立即註冊"}
+               </button>
+             </div>
+          </div>
+        </div>
+      );
+    };
+
+    function App() {
+      // --- 核心狀態 ---
+      const [user, setUser] = useState(null);
+      const [authChecking, setAuthChecking] = useState(true); 
+      
+      const [records, setRecords] = useState([]); 
+      const [tasks, setTasks] = useState([]);
+      const [meta, setMeta] = useState({ authors: [], codes: [], authorDefaults: {}, taskTypes: [] });
+      const [loadingData, setLoadingData] = useState(false);
+      const [processing, setProcessing] = useState(false);
+
+      // --- 視圖控制 ---
+      const [menuOpen, setMenuOpen] = useState(false);
+      const [currentView, setCurrentView] = useState("home"); 
+      const [docTab, setDocTab] = useState("人勤令");
+
+      // --- 公文編輯狀態 ---
+      const [editingDefault, setEditingDefault] = useState(null); 
+      const [editingSubNumId, setEditingSubNumId] = useState(null);
+      const [editingSubNumVal, setEditingSubNumVal] = useState(""); 
+      const [newAuthorName, setNewAuthorName] = useState(""); 
+      const [newTaskType, setNewTaskType] = useState("");
+
+      // --- 工作管制狀態 ---
+      const [showTaskModal, setShowTaskModal] = useState(false);
+      const [taskFilter, setTaskFilter] = useState("全部");
+      const [taskSearch, setTaskSearch] = useState("");
+      
+      const getInitialTaskForm = () => ({
+         id: null,
+         title: "",
+         type: "行政", 
+         delegator: "", 
+         priority: "一般", 
+         startDate: getCurrentDateTimeISO(),
+         endDate: getCurrentDateTimeISO(),
+         notes: "",
+         imageUrl: "", // 圖片 Base64
+         reminderMinutes: "0" // 提醒分鐘數 (0=不提醒)
+      });
+      const [taskForm, setTaskForm] = useState(getInitialTaskForm());
+      
+      // 圖片上傳 Ref
+      const taskImageInputRef = useRef(null);
+      const fileInputRef = useRef(null); // Excel 匯入用
+
+      // --- 公文表單狀態 ---
+      const getInitialForm = () => ({
+        id: null,
+        date: new Date().toISOString().split("T")[0],
+        author: "",
+        code: "",
+        number: "",      
+        subject: "",
+        docType: "一般公文", 
+        rank: "軍官",
+        subNumber: ""    
+      });
+      const [form, setForm] = useState(getInitialForm());
+      const [isManualNumber, setIsManualNumber] = useState(false);
+      const [filter, setFilter] = useState({ type: 'all', value: '' });
+      const [sortOrder, setSortOrder] = useState('desc');
+
+      // --- Auth 監聽 ---
+      useEffect(() => {
+        const unsubscribe = auth.onAuthStateChanged((u) => {
+          setUser(u);
+          setAuthChecking(false);
+        });
+        return () => unsubscribe();
+      }, []);
+
+      // --- 資料監聽 ---
+      useEffect(() => {
+        if (!user) {
+          setRecords([]);
+          setTasks([]);
+          return;
+        }
+        
+        setLoadingData(true);
+        const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
+
+        const unsubRec = userRef.collection("records")
+          .orderBy("createdAt", "desc")
+          .limit(300) 
+          .onSnapshot(snap => {
+            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setRecords(data);
+          });
+
+        const unsubTasks = userRef.collection("tasks")
+          .orderBy("createdAt", "desc")
+          .onSnapshot(snap => {
+            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setTasks(data);
+            setLoadingData(false);
+          });
+
+        const unsubMeta = userRef.collection("metadata").doc("general")
+          .onSnapshot(doc => {
+            if (doc.exists) {
+               const data = doc.data();
+               if(!data.taskTypes) data.taskTypes = ['行政', '訓練', '後勤', '人事', '保養', '交辦事項', '其他'];
+               setMeta(data);
+            }
+            else {
+               const initialMeta = { 
+                  authors: [], 
+                  codes: [], 
+                  authorDefaults: {},
+                  taskTypes: ['行政', '訓練', '後勤', '人事', '保養', '交辦事項', '其他']
+               };
+               userRef.collection("metadata").doc("general").set(initialMeta);
+               setMeta(initialMeta);
+            }
+          });
+
+        return () => { unsubRec(); unsubTasks(); unsubMeta(); };
+      }, [user]);
+
+      // --- 自動跳號 ---
+      const nextNumbers = useMemo(() => {
+        const today = new Date();
+        const rocYear = today.getFullYear() - 1911;
+        const prefix = String(rocYear); 
+        const mainNums = records
+          .map(r => r.number)
+          .filter(n => n && String(n).startsWith(prefix))
+          .map(n => parseInt(n, 10))
+          .filter(n => !Number.isNaN(n));
+        const main = mainNums.length === 0 ? prefix + "0000001" : String(Math.max(...mainNums) + 1);
+
+        const getSub = (type, rank) => {
+          if (type === "一般公文") return "";
+          const relevant = records.filter(r => r.docType === type && r.rank === rank && r.subNumber);
+          const nums = relevant.map(r => parseInt(r.subNumber, 10)).filter(n => !Number.isNaN(n));
+          return nums.length === 0 ? "001" : String(Math.max(...nums) + 1).padStart(3, '0');
+        };
+        return { main, getSub };
+      }, [records]);
+
+      useEffect(() => {
+        if (!form.id && !isManualNumber) {
+            const predictedSub = nextNumbers.getSub(form.docType, form.rank);
+            setForm(prev => ({
+                ...prev,
+                number: nextNumbers.main,
+                subNumber: predictedSub // 自動帶入建議值，但 UI 可修改
+           }));
+        }
+      }, [records, form.docType, form.rank, form.id, isManualNumber, nextNumbers]);
+
+      // --- 公文功能 ---
+      const handleAuthorChange = (val) => {
+        let update = { author: val };
+        if (meta.authorDefaults && meta.authorDefaults[val]) {
+          update.code = meta.authorDefaults[val];
+        }
+        setForm(prev => ({ ...prev, ...update }));
+      };
+
+      const saveAuthorDefault = async (authorName, defaultCode) => {
+         if (!user) return;
+         try {
+           const newDefaults = { ...meta.authorDefaults, [authorName]: defaultCode };
+           await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
+             .collection("metadata").doc("general")
+             .update({ authorDefaults: newDefaults });
+           setEditingDefault(null);
+         } catch(e) { console.error(e); alert("設定失敗"); }
+      };
+
+      const handleSubmit = async (forceNew = false) => {
+        if (!user) return;
+        if (!form.date || !form.author || !form.code || !form.subject) return alert("資料不完整");
+        
+        setProcessing(true);
+        try {
+          const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
+          const isNew = forceNew || !form.id;
+          
+          const finalMain = (isNew && !isManualNumber) ? nextNumbers.main : form.number;
+          // 修改: 允許自由使用表單中的分號，不強制重新計算
+          const finalSub = form.subNumber || "";
+          
+          // --- 重複檢查邏輯 ---
+          // 檢查是否有相同的「總號」+「分號」組合存在
+          // 如果是編輯舊檔案，則排除自己 (id !== form.id)
+          const duplicate = records.find(r => 
+             r.number === finalMain && 
+             r.subNumber === finalSub && 
+             r.id !== (isNew ? null : form.id)
+          );
+
+          if (duplicate) {
+             const warningMsg = `錯誤：總號 [${finalMain}] ${finalSub ? `分號 [${finalSub}] ` : ""}已存在，無法重複建立。`;
+             alert(warningMsg);
+             setProcessing(false);
+             return; // 阻止後續存檔
+          }
+          // --------------------
+
+          const payload = {
+            ...form,
+            number: finalMain,
+            subNumber: finalSub,
+            updatedAt: new Date().toISOString()
+          };
+          delete payload.id; 
+
+          if (isNew) {
+            payload.createdAt = new Date().toISOString();
+            await userRef.collection("records").add(payload);
+          } else {
+            await userRef.collection("records").doc(form.id).set(payload, { merge: true });
+          }
+          if (form.author && form.code) {
+             await userRef.collection("metadata").doc("general").set({
+               authors: firebase.firestore.FieldValue.arrayUnion(form.author),
+               codes: firebase.firestore.FieldValue.arrayUnion(form.code)
+             }, { merge: true });
+          }
+          const resetState = getInitialForm();
+          resetState.date = form.date; 
+          resetState.author = form.author;
+          resetState.code = form.code;
+          setForm(resetState);
+          setFilter({type:'all', value:''});
+          setIsManualNumber(false);
+          window.scrollTo({top:0, behavior:'smooth'});
+        } catch (e) { alert("錯誤: " + e.message);
+        } 
+        finally { setProcessing(false); }
+      };
+
+      const handleDelete = async (id) => {
+        if(!id || !confirm("確定刪除?")) return;
+        try {
+            await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete();
+            if(form.id === id) setForm(getInitialForm());
+        } catch(e) { console.error(e); alert("刪除失敗"); }
+      };
+
+      // --- 工作管制 功能 ---
+      const openTaskModal = (task = null) => {
+         if (task) {
+            setTaskForm({ 
+               ...task, 
+               reminderMinutes: task.reminderMinutes || "0",
+               imageUrl: task.imageUrl || "" 
+            });
+         } else {
+            setTaskForm(getInitialTaskForm());
+         }
+         setShowTaskModal(true);
+      };
+
+      const handleTaskSubmit = async () => {
+         if(!taskForm.title) return alert("請輸入工作名稱");
+         setProcessing(true);
+         try {
+            const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks");
+            const payload = { ...taskForm, updatedAt: new Date().toISOString() };
+            const id = payload.id;
+            delete payload.id;
+            if (id) {
+               await userRef.doc(id).update(payload);
+            } else {
+               payload.createdAt = new Date().toISOString();
+               await userRef.add(payload);
+            }
+            setShowTaskModal(false);
+            setTaskForm(getInitialTaskForm());
+         } catch(e) { alert("儲存失敗：" + e.message); }
+         finally { setProcessing(false);
+         }
+      };
+
+      const deleteTask = async (e, id) => {
+         e.stopPropagation();
+         if(!confirm("確定刪除此工作項目？")) return;
+         try {
+            await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
+               .collection("tasks").doc(id).delete();
+         } catch(e) { alert("刪除失敗"); }
+      };
+
+      // 圖片處理
+      const handleImageUpload = async (e) => {
+         const file = e.target.files[0];
+         if (!file) return;
+         setProcessing(true);
+         try {
+             // 壓縮圖片
+             const compressedBase64 = await compressImage(file, 800, 0.7);
+             setTaskForm(prev => ({ ...prev, imageUrl: compressedBase64 }));
+         } catch (err) {
+             console.error(err);
+             alert("圖片處理失敗");
+         } finally {
+             setProcessing(false);
+             e.target.value = null;
+             // reset input
+         }
+      };
+
+      // --- 系統設定 功能 ---
+      const addAuthor = async () => {
+        if(!newAuthorName.trim()) return;
+        try {
+          await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
+            .collection("metadata").doc("general")
+            .update({ authors: firebase.firestore.FieldValue.arrayUnion(newAuthorName.trim()) });
+          setNewAuthorName("");
+        } catch(e) { alert("新增失敗"); }
+      };
+
+      const deleteAuthor = async (name) => {
+        if(!confirm(`確定移除人員 ${name} ?`)) return;
+        try {
+          await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
+            .collection("metadata").doc("general")
+            .update({ authors: firebase.firestore.FieldValue.arrayRemove(name) });
+        } catch(e) { alert("移除失敗"); }
+      };
+
+      const addTaskType = async () => {
+        if(!newTaskType.trim()) return;
+        try {
+          await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
+            .collection("metadata").doc("general")
+            .update({ taskTypes: firebase.firestore.FieldValue.arrayUnion(newTaskType.trim()) });
+          setNewTaskType("");
+        } catch(e) { alert("新增失敗"); }
+      };
+
+      const deleteTaskType = async (type) => {
+        if(!confirm(`確定移除分類 ${type} ?`)) return;
+        try {
+          await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
+            .collection("metadata").doc("general")
+            .update({ taskTypes: firebase.firestore.FieldValue.arrayRemove(type) });
+        } catch(e) { alert("移除失敗"); }
+      };
+
+      // --- 匯出匯入 Excel ---
+      const handleExport = () => {
+        if (records.length === 0 && tasks.length === 0) return alert("無資料");
+        try {
+          const wb = XLSX.utils.book_new();
+          if(records.length > 0){
+             const recData = records.map(r => ({
+               "總號": r.number, "日期": r.date, "發文者": r.author, "代字": r.code, 
+               "主旨": r.subject, "分號": r.subNumber || "", "種類": r.docType, "階級": r.rank || ""
+             }));
+             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(recData), "公文紀錄");
+          }
+          if(tasks.length > 0){
+             const taskData = tasks.map(t => ({
+                "標題": t.title, "業務種類": t.type, "委託人": t.delegator, "重要性": t.priority,
+                "開始時間": t.startDate, "結束時間": t.endDate, "備註": t.notes
+             }));
+             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(taskData), "工作管制");
+          }
+          XLSX.writeFile(wb, `業務系統備份_${new Date().toISOString().split('T')[0]}.xlsx`);
+        } catch (e) { alert("匯出失敗"); }
+      };
+
+      const handleImport = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if(!confirm("確定要匯入？\n請確認這是本系統匯出的格式。")) { e.target.value = null; return; }
+
+        setProcessing(true);
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          try {
+            const data = evt.target.result;
+            const workbook = XLSX.read(data, { type: 'binary' });
+            const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
+            let count = 0;
+            const recSheet = workbook.Sheets["公文紀錄"] || workbook.Sheets[workbook.SheetNames[0]];
+            if(recSheet) {
+               const json = XLSX.utils.sheet_to_json(recSheet);
+               for(let row of json) {
+                  if(row["總號"] && row["主旨"]) {
+                     await userRef.collection("records").add({
+                        number: String(row["總號"]), date: row["日期"], author: row["發文者"], code: row["代字"],
+                        subject: row["主旨"], subNumber: String(row["分號"]||""), docType: row["種類"]||"一般公文", rank: row["階級"]||"軍官",
+                        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+                     });
+                     count++;
+                  }
+               }
+            }
+            alert(`匯入完成！`);
+            window.location.reload();
+          } catch (err) { alert("匯入失敗：" + err.message); } finally { setProcessing(false); e.target.value = null;
+          }
+        };
+        reader.readAsBinaryString(file);
+      };
+
+      // --- 其他 Helper ---
+      const copyToClipboard = (r) => {
+         const dateText = formatDateNoYear(r.date);
+         const numSuffix = r.number ? r.number.slice(-3) : "000";
+         const text = `${dateText}${r.code}${numSuffix}號：${r.subject}`;
+         navigator.clipboard.writeText(text).then(() => {
+             const btn = document.getElementById(`copy-btn-${r.id}`);
+             if(btn) {
+                 const originalHTML = btn.innerHTML;
+                 btn.innerHTML = '<i class="fas fa-check text-emerald-500"></i>';
+                 setTimeout(()=> btn.innerHTML = originalHTML, 1500);
+             }
+         });
+      };
+
+      const handleSubNumberEdit = (r) => {
+        setEditingSubNumId(r.id);
+        setEditingSubNumVal(r.subNumber || "");
+      };
+      
+      const saveSubNumber = async () => {
+        if (!editingSubNumId) return;
+        try {
+           await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid)
+             .collection("records").doc(editingSubNumId)
+             .update({ subNumber: editingSubNumVal });
+           setEditingSubNumId(null);
+        } catch(e) { alert("更新失敗"); }
+      };
+
+      const handleLogout = () => { if(confirm("確定登出?")) auth.signOut(); };
+
+      // --- Filter Lists ---
+      const displayRecords = useMemo(() => {
+        let res = [...records];
+        if (filter.type === 'search') {
+            const k = (filter.value || "").toLowerCase();
+            res = res.filter(r => (r.subject||"").toLowerCase().includes(k) || (r.number||"").toLowerCase().includes(k));
+        }
+        res.sort((a, b) => {
+          const numA = parseInt(a.number, 10);
+          const numB = parseInt(b.number, 10);
+          return sortOrder === 'desc' ? numB - numA : numA - numB;
+        });
+        return res;
+      }, [records, filter, sortOrder]);
+
+      const docSystemRecords = useMemo(() => records.filter(r => r.docType === docTab), [records, docTab]);
+
+      const filteredTasks = useMemo(() => {
+         let res = [...tasks];
+         if(taskFilter !== "全部") res = res.filter(t => t.priority === taskFilter);
+         if(taskSearch) res = res.filter(t => t.title.toLowerCase().includes(taskSearch.toLowerCase()));
+         res.sort((a,b) => new Date(a.endDate) - new Date(b.endDate));
+         return res;
+      }, [tasks, taskFilter, taskSearch]);
+
+      // --- Render ---
+      if (authChecking) return <div className="h-screen flex items-center justify-center text-slate-400">載入中...</div>;
+      if (!user) return <LoginScreen />;
+
+      return (
+        <div className="min-h-screen flex flex-col bg-slate-50 pb-20 bg-dot-pattern">
+          
+          {menuOpen && (
+            <div 
+              className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm overlay fade-in" 
+              onClick={() => setMenuOpen(false)} 
+            />
+          )}
+
+          {/* 左側側邊欄 */}
+          <div className={`fixed inset-y-0 left-0 w-[80%] max-w-[280px] bg-white shadow-2xl z-50 sidebar flex flex-col ${menuOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
+            <div className="bg-slate-900 text-white p-6 pt-12">
+               <h2 className="font-bold text-xl">功能選單</h2>
+               <div className="text-slate-400 text-xs mt-1 truncate">{user.email}</div>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+               <button onClick={()=>{setCurrentView('home');setMenuOpen(false)}} 
+                 className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition ${currentView==='home' ?
+                 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
+                 <i className="fas fa-pen-nib w-6 text-center"></i> 首頁
+               </button>
+               
+               <button onClick={()=>{setCurrentView('docs');setMenuOpen(false)}} 
+                 className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition 
+                 ${currentView==='docs' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
+                 <i className="fas fa-folder-open w-6 text-center"></i> 公文系統
+               </button>
+
+               <button onClick={()=>{setCurrentView('tasks');setMenuOpen(false)}} 
+                 className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition ${currentView==='tasks' ?
+                 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
+                 <i className="fas fa-tasks w-6 text-center"></i> 工作管制
+               </button>
+               
+               <button onClick={()=>{setCurrentView('personnel');setMenuOpen(false)}} 
+                 className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition 
+                 ${currentView==='personnel' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
+                 <i className="fas fa-cogs w-6 text-center"></i> 系統設定
+               </button>
+
+               <div className="border-t border-slate-100 my-2"></div>
+               
+               <button onClick={handleExport} className="w-full text-left px-4 py-3 rounded-xl font-bold flex 
+                  items-center gap-3 text-slate-600 hover:bg-slate-50">
+                  <i className="fas fa-file-export w-6 text-center"></i> 匯出 Excel
+               </button>
+               
+               <div className="relative">
+                 <input type="file" ref={fileInputRef} onChange={handleImport} accept=".xlsx, .xls" className="hidden" />
+                 <button onClick={()=>fileInputRef.current.click()} className="w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 text-slate-600 hover:bg-slate-50">
+                    <i className="fas fa-file-import w-6 text-center"></i> 匯入 Excel
+                 </button>
+               </div>
+            </div>
+            
+            <div className="p-4 border-t border-slate-100">
+               <button onClick={handleLogout} className="w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 text-red-500 hover:bg-red-50 transition">
+                  <i className="fas fa-sign-out-alt w-6 text-center"></i> 登出
+               </button>
+            </div>
+          </div>
+
+          {/* 頂部 Header */}
+          <header className="sticky top-0 z-30 bg-white/90 backdrop-blur shadow-sm border-b border-slate-100 px-4 h-14 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button onClick={() => setMenuOpen(true)} className="text-slate-700 text-xl p-1 active:scale-95 transition">
+                <i className="fas fa-bars"></i>
+              </button>
+              <h1 className="font-bold text-lg text-slate-800">
+                {currentView === 'home' && '填寫表單'}
+                {currentView === 'docs' && '公文系統'}
+                {currentView === 'tasks' && '工作管制'}
+                {currentView === 'personnel' && '系統設定'}
+              </h1>
+            </div>
+            {currentView === 'home' && (
+              <button onClick={()=>{setForm(getInitialForm());setFilter({type:'all',value:''});setIsManualNumber(false)}} 
+                className="text-slate-400 hover:text-slate-600 text-sm font-medium px-2 py-1">重置</button>
+            )}
+          </header>
+
+          {/* --- 視圖 1: 首頁 --- */}
+          {currentView === 'home' && (
+            <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-5 fade-in">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 ml-1">發文日期</label>
+                      <div className="relative h-12">
+                         <div className="absolute inset-0 flex items-center px-3 border border-slate-200 rounded-xl bg-white text-slate-800 pointer-events-none">
+                             {form.date ?
+                                <span className="text-base font-bold">{formatDateNoYear(form.date)}</span> : <span className="text-slate-400">請選擇</span>}
+                          </div>
+                          <input type="date" className="absolute inset-0 w-full h-full opacity-0 z-10" 
+                            value={form.date} onChange={e=>setForm({...form, date:e.target.value})} />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 ml-1">發文者</label>
+                      <div className="select-wrapper">
+                        <input type="text" list="authList" className="input-ios" placeholder="選擇" value={form.author} onChange={e=>handleAuthorChange(e.target.value)} />
+                        <datalist id="authList">{meta.authors.map(a=><option key={a} value={a}/>)}</datalist>
+                      </div>
+                    </div>
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 ml-1">文電代字</label>
+                      <div className="select-wrapper">
+                        <input type="text" list="codeList" className="input-ios" placeholder="選擇" value={form.code} onChange={e=>setForm({...form, code:e.target.value})} />
+                        <datalist id="codeList">{meta.codes.map(c=><option key={c} value={c}/>)}</datalist>
+                      </div>
+                    </div>
+                    
+                    {/* 修改: 移除灰字顯示，避免重疊 */}
+                    <div className="grid grid-cols-3 gap-2">
+                       <div className="col-span-2 space-y-1">
+                         <label className="text-xs font-bold text-slate-500 ml-1">
+                            總號 ({isManualNumber ? "手動" : "自動"})
+                         </label>
+                         <div className="relative flex items-center">
+                             {/* 移除了導致重疊的 span */}
+                             
+                             <input 
+                               type="text" 
+                               readOnly={!isManualNumber} 
+                               /* 只顯示後三碼 */
+                               value={form.number && form.number.length > 3 ? form.number.slice(-3) : form.number} 
+                               onChange={e => {
+                                  // 修改時保留前綴，只更新後三碼
+                                  const val = e.target.value;
+                                  const prefix = (form.number && form.number.length > 3) ? form.number.slice(0, -3) : "";
+                                  setForm({...form, number: prefix + val});
+                               }}
+                               className={`input-ios text-right font-mono font-bold pr-10 ${isManualNumber ? "border-blue-400 ring-1 ring-blue-50" : "bg-slate-50 text-slate-500"}`} 
+                               placeholder="000" 
+                             />
+                             <button onClick={() => setIsManualNumber(!isManualNumber)} className="absolute right-0 top-0 bottom-0 px-3 text-slate-400 hover:text-blue-600">
+                                 <i className={`fas ${isManualNumber ? "fa-lock-open" : "fa-lock"}`}></i>
+                             </button>
+                         </div>
+                       </div>
+                    
+                       <div className="col-span-1 space-y-1">
+                          <label className="text-xs font-bold text-slate-500 ml-1">分號</label>
+                          <input 
+                             type="number" 
+                             /* 顯示時轉為數字以隱藏開頭的 0 (例如 001 變 1) */
+                             value={form.subNumber ? parseInt(form.subNumber, 10) : ""} 
+                             onChange={e => {
+                                // 儲存時自動補 0 回 3 位數 (例如 1 變 001)
+                                const val = e.target.value;
+                                setForm({...form, subNumber: val ? val.padStart(3, '0') : ""});
+                             }}
+                             className="input-ios text-center font-mono font-bold" 
+                             placeholder="無" 
+                          />
+                        </div>
+                    </div>
+                 </div>
+
+                 <div className="space-y-1">
+                   <label className="text-xs font-bold text-slate-500 ml-1">主旨</label>
+                   <textarea rows="2" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-3 text-base outline-none resize-none focus:border-blue-500 transition"
+                      value={form.subject} onChange={e=>setForm({...form, subject:e.target.value})} placeholder="輸入內容..."></textarea>
+                 </div>
+
+                 <div className="pt-2 space-y-3">
+                    <div className="flex gap-2 p-1 bg-slate-100 rounded-lg overflow-x-auto">
+                       {['一般公文','人勤令','人職令'].map(t => (
+                         <button key={t} onClick={()=>setForm({...form, docType:t})}
+                           className={`flex-1 py-2 text-xs rounded-md font-bold whitespace-nowrap transition-all ${form.docType===t?'bg-white text-blue-600 shadow-sm':'text-slate-400'}`}>
+                           {t}
+                         </button>
+                       ))}
+                    </div>
+                    {form.docType !== '一般公文' && (
+                      <div className="flex gap-2 p-1 bg-slate-100 rounded-lg animate-copy">
+                         {['軍官','士官','士兵'].map(r => (
+                           <button key={r} onClick={()=>setForm({...form, rank:r})}
+                             className={`flex-1 py-2 text-xs rounded-md font-bold ${form.rank===r?'bg-indigo-600 text-white shadow-sm':'text-slate-400'}`}>{r}</button>
+                         ))}
+                      </div>
+                    )}
+                 </div>
+
+                 <div className="grid grid-cols-4 gap-2 pt-2">
+                    <button onClick={()=>{
+                        const k = prompt("輸入關鍵字查詢");
+                        if(k) setFilter({type:'search', value:k});
+                    }} className="col-span-1 h-12 rounded-xl border border-slate-300 text-slate-600 font-bold bg-white">查詢</button>
+                    
+                    <button onClick={()=>{setIsManualNumber(true);handleSubmit(false)}} disabled={!form.id} 
+                      className={`col-span-1 h-12 rounded-xl border font-bold ${form.id?'bg-blue-50 text-blue-600 border-blue-200':'bg-slate-50 text-slate-300'}`}>修改</button>
+                    
+                    <button onClick={()=>handleSubmit(true)} disabled={processing}
+                      className="col-span-2 h-12 rounded-xl bg-slate-900 text-white font-bold shadow-lg flex justify-center items-center">
+                      {processing ? <i className="fas fa-circle-notch fa-spin"></i> : "登錄"}
+                    </button>
+                 </div>
+              </div>
+
+              <div className="space-y-4">
+                 <h2 className="font-bold text-slate-800 text-lg px-2">
+                    {filter.type==='search' ? `搜尋: ${filter.value}` : '最近紀錄'}
+                    {filter.type==='search' && <button onClick={()=>setFilter({type:'all'})} className="ml-2 text-xs text-blue-500">清除</button>}
+                 </h2>
+                 {loadingData && <div className="text-center text-slate-400 py-4">讀取資料中...</div>}
+                 {!loadingData && displayRecords.slice(0, 20).map(r => (
+                   <div key={r.id} onClick={()=>{setForm({...r}); setIsManualNumber(true); window.scrollTo({top:0,behavior:'smooth'})}}
+                      className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm active:bg-slate-50 transition relative overflow-hidden group">
+                      <div className="flex justify-between items-start mb-1">
+                         <span className="font-mono font-bold text-blue-600 text-lg">#{r.number}</span>
+                         <div className="text-xs text-slate-400">{formatDateNoYear(r.date)}</div>
+                      </div>
+                      <div className="text-base font-bold text-slate-800 mb-2 line-clamp-1">{r.subject}</div>
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                          <span className="bg-slate-100 px-2 py-1 rounded">{r.author}</span>
+                          {r.docType!=='一般公文' && <span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded">{r.docType} {r.subNumber}</span>}
+                          
+                          <div className="ml-auto flex gap-2">
+                              <button onClick={(e)=>{e.stopPropagation();copyToClipboard(r)}} id={`copy-btn-${r.id}`} className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded border border-emerald-100">
+                                <i className="fas fa-copy"></i>
+                              </button>
+                              <button onClick={(e)=>{e.stopPropagation();handleDelete(r.id)}} className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 rounded border border-red-100">
+                                <i className="fas fa-trash-alt"></i>
+                              </button>
+                          </div>
+                      </div>
+                   </div>
+                 ))}
+              </div>
+            </main>
+          )}
+
+          {/* --- 視圖 2: 公文系統 --- */}
+          {currentView === 'docs' && (
+            <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-4 fade-in">
+               <div className="flex bg-slate-200 p-1 rounded-xl">
+                  <button onClick={()=>setDocTab('人勤令')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${docTab==='人勤令'?'bg-white text-blue-600 shadow-sm':'text-slate-500'}`}>人勤令</button>
+                  <button onClick={()=>setDocTab('人職令')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${docTab==='人職令'?'bg-white text-blue-600 shadow-sm':'text-slate-500'}`}>人職令</button>
+               </div>
+
+               <div className="space-y-3">
+                  {docSystemRecords.length === 0 ?
+                  <div className="text-center text-slate-400 py-10">尚無資料</div> : docSystemRecords.map(r => (
+                    <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500">
+                       <div className="flex justify-between items-start">
+                          <div>
+                             <div className="text-xs text-slate-400 mb-1">{formatDateNoYear(r.date)}</div>
+                             <h3 className="font-bold text-slate-800 text-lg mb-1">{r.subject}</h3>
+                             <div className="text-sm text-slate-600 bg-slate-100 inline-block px-2 py-0.5 rounded">{r.author} ({r.rank})</div>
+                          </div>
+                          <div className="text-right pl-2">
+                             <div className="text-[10px] text-slate-400 mb-1">分號</div>
+                             {editingSubNumId === r.id ? (
+                               <div className="flex items-center gap-1">
+                                  <input type="text" className="w-16 border border-blue-500 rounded px-1 py-0.5 text-center font-mono text-lg" 
+                                     value={editingSubNumVal} onChange={e=>setEditingSubNumVal(e.target.value)} autoFocus />
+                                  <div className="flex flex-col gap-1">
+                                    <button onClick={saveSubNumber} className="w-6 h-6 bg-green-500 text-white rounded flex items-center justify-center"><i className="fas fa-check text-xs"></i></button>
+                                    <button onClick={()=>setEditingSubNumId(null)} className="w-6 h-6 bg-gray-300 text-white rounded flex items-center justify-center"><i className="fas fa-times text-xs"></i></button>
+                                  </div>
+                               </div>
+                             ) : (
+                               <div className="group cursor-pointer" onClick={()=>handleSubNumberEdit(r)}>
+                                  <span className="font-mono font-bold text-blue-900 text-2xl border-b border-transparent group-hover:border-blue-300 transition-all">{r.subNumber}</span>
+                                  <div className="text-[10px] text-blue-400 opacity-0 group-hover:opacity-100">點擊修改</div>
+                               </div>
+                             )}
+                          </div>
+                       </div>
+                    </div>
+                  ))}
+               </div>
+            </main>
+          )}
+
+          {/* --- 視圖 3: 工作管制 --- */}
+          {currentView === 'tasks' && (
+             <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-4 fade-in">
+                {/* 搜尋與過濾 */}
+                <div className="bg-white p-2 rounded-2xl shadow-sm space-y-2">
+                   <div className="relative">
+                      <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                      <input type="text" className="w-full bg-slate-100 rounded-xl pl-9 pr-4 py-2 text-sm outline-none focus:ring-2 ring-blue-100 transition" 
+                         placeholder="搜尋工作名稱..." value={taskSearch} onChange={e=>setTaskSearch(e.target.value)} />
+                   </div>
+                   <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                      {['全部', '急件', '一般', '交辦'].map(f => (
+                         <button key={f} onClick={()=>setTaskFilter(f)} 
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${taskFilter===f ?
+                            'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-500'}`}>
+                            {f === '急件' && <span className="w-2 h-2 rounded-full bg-red-500 inline-block mr-1"></span>}
+                            {f === '一般' && <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block mr-1"></span>}
+                            {f === '交辦' && <span className="w-2 h-2 rounded-full bg-purple-500 inline-block mr-1"></span>}
+                            {f}
+                         </button>
+                      ))}
+                   </div>
+                </div>
+
+                {/* 工作列表 */}
+                <div className="space-y-3 pb-20">
+                   {filteredTasks.length === 0 && <div className="text-center text-slate-400 py-10">無工作項目</div>}
+                   {filteredTasks.map(t => {
+                      const remainText = getRemainingText(t.endDate);
+                      const priorityColor = t.priority === '急件' ? 'bg-red-500' : t.priority === '一般' ? 'bg-emerald-500' : 'bg-purple-500';
+                      // 精確計算是否過期與是否觸發提醒
+                      const now = new Date();
+                      const end = new Date(t.endDate);
+                      const diffMs = end - now;
+                      const reminderMs = parseInt(t.reminderMinutes || 0, 10) * 60 * 1000;
+                      const showReminder = reminderMs > 0 && diffMs <= reminderMs && diffMs > 0;
+                      const isExpired = diffMs < 0;
+                      return (
+                         <div key={t.id} onClick={()=>openTaskModal(t)}
+                            className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 relative overflow-hidden active:scale-[0.98] transition cursor-pointer">
+                            <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${priorityColor}`}></div>
+                            
+                            <div className="flex justify-between items-start pl-3">
+                               <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                     <h3 className="font-bold text-slate-800 text-lg">{t.title}</h3>
+                                     {showReminder && <i className="fas fa-bell text-red-500 animate-bell" title="提醒：即將到期"></i>}
+                                     {t.imageUrl && <i className="fas fa-image text-slate-400"></i>}
+                                  </div>
+                                  <div className="text-xs text-slate-500 space-y-1">
+                                     <div>委託人：{t.delegator || "未設定"} | 業務種類：{t.type}</div>
+                                     <div className="flex items-center gap-1">
+                                        <i className="far fa-clock"></i> 
+                                        {formatDateTime(t.startDate)} → {formatDateTime(t.endDate)}
+                                     </div>
+                                  </div>
+                               </div>
+                               <div className="flex flex-col items-end pl-2">
+                                  {remainText && (
+                                     <div className={`text-xs font-bold px-2 py-1 rounded-lg mb-2 whitespace-nowrap 
+                                        ${isExpired ? 'bg-gray-200 text-gray-500' : showReminder ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'}`}>
+                                        {remainText}
+                                     </div>
+                                  )}
+                                  <button onClick={(e)=>deleteTask(e, t.id)} className="text-slate-300 hover:text-red-500 transition p-2 rounded-full hover:bg-red-50">
+                                     <i className="fas fa-trash-alt"></i>
+                                  </button>
+                               </div>
+                            </div>
+                         </div>
+                      );
+                   })}
+                </div>
+
+                {/* 懸浮新增按鈕 */}
+                <button onClick={()=>openTaskModal(null)} 
+                   className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl active:scale-90 transition z-20">
+                   <i className="fas fa-plus"></i>
+                </button>
+             </main>
+          )}
+
+          {/* --- Modal: 建立/修改工作 --- */}
+          {showTaskModal && (
+             <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+                <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={()=>setShowTaskModal(false)}></div>
+                <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 relative z-10 animate-[fadeIn_0.3s_ease-out]">
+                   <div className="flex justify-between items-center mb-4">
+                      <h2 className="text-xl font-bold text-slate-800">{taskForm.id ? "編輯工作" : "建立新工作"}</h2>
+                      <button onClick={()=>setShowTaskModal(false)} className="w-8 h-8 flex items-center justify-center bg-slate-100 rounded-full text-slate-500">
+                         <i className="fas fa-times"></i>
+                      </button>
+                   </div>
+
+                   <div className="space-y-4 max-h-[75vh] overflow-y-auto no-scrollbar pb-4">
+                      <div>
+                         <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">工作名稱</label>
+                         <input type="text" className="input-ios bg-slate-50" value={taskForm.title} onChange={e=>setTaskForm({...taskForm, title:e.target.value})} />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                         <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">業務種類</label>
+                            <div className="select-wrapper">
+                               <select className="input-ios bg-slate-50" value={taskForm.type} onChange={e=>setTaskForm({...taskForm, type:e.target.value})}>
+                                  {meta.taskTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                               </select>
+                            </div>
+                         </div>
+                         <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">委託人(單位)</label>
+                            <input type="text" className="input-ios bg-slate-50" value={taskForm.delegator} onChange={e=>setTaskForm({...taskForm, delegator:e.target.value})} />
+                         </div>
+                      </div>
+
+                      <div>
+                         <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">重要性</label>
+                         <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
+                            {['急件', '一般', '交辦'].map(p => (
+                               <button key={p} onClick={()=>setTaskForm({...taskForm, priority:p})}
+                                  className={`flex-1 py-2 text-xs rounded-lg font-bold transition-all ${taskForm.priority===p ?
+                                  'bg-white shadow-sm text-slate-800' : 'text-slate-400'}`}>
+                                  <span className={`w-2 h-2 rounded-full inline-block mr-1 ${p==='急件'?'bg-red-500':p==='一般'?'bg-emerald-500':'bg-purple-500'}`}></span>
+                                  {p}
+                               </button>
+                            ))}
+                         </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                         <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">承辦時間</label>
+                            <input type="datetime-local" className="input-ios bg-slate-50 text-sm px-1" value={taskForm.startDate} onChange={e=>setTaskForm({...taskForm, startDate:e.target.value})} />
+                         </div>
+                         <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">結束時間</label>
+                                 <input type="datetime-local" className="input-ios bg-slate-50 text-sm px-1" value={taskForm.endDate} onChange={e=>setTaskForm({...taskForm, endDate:e.target.value})} />
+                         </div>
+                      </div>
+
+                      <div>
+                         <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">到期提醒 (精確到分)</label>
+                         <div className="select-wrapper">
+                             <select className="input-ios bg-slate-50" value={taskForm.reminderMinutes} onChange={e=>setTaskForm({...taskForm, reminderMinutes:e.target.value})}>
+                                <option value="0">不提醒</option>
+                                <option value="10">10 分鐘前</option>
+                                <option value="30">30 分鐘前</option>
+                                <option value="60">1 小時前</option>
+                                <option value="120">2 小時前</option>
+                                <option value="1440">1 天前</option>
+                                <option value="4320">3 天前</option>
+                             </select>
+                         </div>
+                      </div>
+
+                      <div>
+                         <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">備註 / 附件</label>
+                         <div className="relative">
+                             <textarea className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm h-24 outline-none focus:border-blue-500" 
+                               placeholder="輸入內容..." value={taskForm.notes} onChange={e=>setTaskForm({...taskForm, notes:e.target.value})}></textarea>
+                            
+                            {/* 圖片上傳按鈕 */}
+                            <div className="absolute bottom-2 right-2 flex gap-2">
+                                <input type="file" ref={taskImageInputRef} accept="image/*" className="hidden" onChange={handleImageUpload} />
+                                <button onClick={()=>taskImageInputRef.current.click()} className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 hover:bg-blue-100 hover:text-blue-600 flex items-center justify-center transition" title="上傳圖片">
+                                    <i className="fas fa-camera"></i>
+                                </button>
+                            </div>
+                         </div>
+                         
+                         {/* 圖片預覽區 */}
+                         {taskForm.imageUrl && (
+                             <div className="mt-2 relative rounded-xl overflow-hidden border border-slate-200">
+                                 <img src={taskForm.imageUrl} alt="Attachment" className="w-full max-h-48 object-cover" />
+                                 <button onClick={()=>setTaskForm({...taskForm, imageUrl:""})} className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center">
+                                     <i className="fas fa-times"></i>
+                                 </button>
+                             </div>
+                         )}
+                      </div>
+                   </div>
+
+                   <div className="grid grid-cols-1 gap-3 pt-4 border-t border-slate-100 mt-2">
+                      <button onClick={handleTaskSubmit} disabled={processing} className="bg-blue-600 text-white font-bold h-12 rounded-xl shadow-lg active:scale-95 transition">
+                        {processing ? "處理中..." : (taskForm.id ? "儲存修改" : "建立")}
+                      </button>
+                   </div>
+                </div>
+             </div>
+          )}
+
+          {/* --- 視圖 4: 系統設定 --- */}
+          {currentView === 'personnel' && (
+            <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-6 fade-in">
+               
+               {/* 業務種類設定 */}
+               <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 bg-slate-50">
+                     <h2 className="font-bold text-slate-700 mb-3">業務種類設定</h2>
+                     <div className="flex gap-2">
+                        <input type="text" value={newTaskType} onChange={e=>setNewTaskType(e.target.value)} 
+                           placeholder="例如：裝備、伙食..." className="flex-1 px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500" />
+                        <button onClick={addTaskType} className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold shadow-sm active:scale-95">新增</button>
+                     </div>
+                  </div>
+                  <div className="p-4 flex flex-wrap gap-2">
+                     {meta.taskTypes.map(t => (
+                        <div key={t} className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm font-bold">
+                           {t}
+                           <button onClick={()=>deleteTaskType(t)} className="text-slate-400 hover:text-red-500 px-1"><i className="fas fa-times"></i></button>
+                        </div>
+                     ))}
+                     {meta.taskTypes.length === 0 && <span className="text-slate-400 text-sm">無分類，請新增</span>}
+                  </div>
+               </div>
+
+               {/* 人員設定 */}
+               <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 bg-slate-50">
+                     <h2 className="font-bold text-slate-700 mb-3">人員設定</h2>
+                     <div className="flex gap-2">
+                        <input type="text" value={newAuthorName} onChange={e=>setNewAuthorName(e.target.value)} 
+                          placeholder="輸入姓名..." className="flex-1 px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500" />
+                        <button onClick={addAuthor} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm active:scale-95">新增</button>
+                     </div>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                     {meta.authors.map(a => (
+                       <div key={a} className="p-4 flex justify-between items-center hover:bg-slate-50 transition">
+                          <div>
+                             <div className="font-bold text-slate-800 text-lg">{a}</div>
+                             <div className="text-xs text-slate-400 mt-1 flex items-center gap-1 cursor-pointer" onClick={()=>setEditingDefault(a)}>
+                                <i className="fas fa-link"></i>
+                                {editingDefault === a ? (
+                                   <select className="bg-white border border-slate-300 rounded" 
+                                      value={meta.authorDefaults?.[a]||""} 
+                                      onChange={(e)=>saveAuthorDefault(a, e.target.value)} onBlur={()=>setEditingDefault(null)} autoFocus>
+                                      <option value="">無預設</option>
+                                      {meta.codes.map(c=><option key={c} value={c}>{c}</option>)}
+                                   </select>
+                                ) : (
+                                   <span>預設代字: {meta.authorDefaults?.[a] || "未設定"}</span>
+                                )}
+                             </div>
+                          </div>
+                          <button onClick={()=>deleteAuthor(a)} className="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-red-500 rounded-full hover:bg-red-50 transition">
+                             <i className="fas fa-trash-alt"></i>
+                          </button>
+                       </div>
+                     ))}
+                     {meta.authors.length === 0 && <div className="p-8 text-center text-slate-400">尚無人員資料</div>}
+                  </div>
+               </div>
+            </main>
+          )}
+
+        </div>
+      );
     }
-    const ref = db.collection("artifacts").doc(CURRENT_APP_ID)
-      .collection("users").doc(user.uid)
-      .collection("records")
-      .orderBy("createdAt", "desc")
-      .limit(300);
 
-    const unsub = ref.onSnapshot(snap => {
-      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsub();
-  }, [user]);
-
-  return (
-    <RecordsContext.Provider value={{ records }}>
-      {children}
-    </RecordsContext.Provider>
-  );
-}
-
-/* ================= Tasks Context ================= */
-const TasksContext = React.createContext(null);
-const useTasks = () => React.useContext(TasksContext);
-
-function TasksProvider({ children }) {
-  const { user } = useAuth();
-  const [tasks, setTasks] = React.useState([]);
-
-  React.useEffect(() => {
-    if (!user) {
-      setTasks([]);
-      return;
-    }
-    const ref = db.collection("artifacts").doc(CURRENT_APP_ID)
-      .collection("users").doc(user.uid)
-      .collection("tasks")
-      .orderBy("createdAt", "desc");
-
-    const unsub = ref.onSnapshot(snap => {
-      setTasks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsub();
-  }, [user]);
-
-  return (
-    <TasksContext.Provider value={{ tasks }}>
-      {children}
-    </TasksContext.Provider>
-  );
-}
-
-/* ================= Login ================= */
-function LoginScreen() {
-  const [email, setEmail] = React.useState("");
-  const [pw, setPw] = React.useState("");
-
-  const login = async e => {
-    e.preventDefault();
-    await auth.signInWithEmailAndPassword(email, pw);
-  };
-
-  return (
-    <div className="h-screen flex items-center justify-center">
-      <form onSubmit={login} className="bg-white p-6 rounded-xl shadow w-80 space-y-3">
-        <input className="border w-full p-2" placeholder="Email" onChange={e=>setEmail(e.target.value)} />
-        <input className="border w-full p-2" type="password" placeholder="Password" onChange={e=>setPw(e.target.value)} />
-        <button className="bg-blue-600 text-white w-full py-2 rounded">登入</button>
-      </form>
-    </div>
-  );
-}
-
-/* ================= Main ================= */
-function MainLayout() {
-  const { user, checking } = useAuth();
-  const { records } = useRecords();
-  const { tasks } = useTasks();
-
-  if (checking) return <div className="p-10">載入中...</div>;
-  if (!user) return <LoginScreen />;
-
-  return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-xl font-bold">系統已穩定拆分</h1>
-      <div className="bg-white p-4 rounded shadow">
-        <div>公文筆數：{records.length}</div>
-        <div>工作筆數：{tasks.length}</div>
-      </div>
-      <button onClick={()=>auth.signOut()} className="text-red-500">登出</button>
-    </div>
-  );
-}
-
-/* ================= App ================= */
-function App() {
-  return (
-    <AuthProvider>
-      <RecordsProvider>
-        <TasksProvider>
-          <MainLayout />
-        </TasksProvider>
-      </RecordsProvider>
-    </AuthProvider>
-  );
-}
-
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-</script>
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
 </body>
 </html>

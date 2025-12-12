@@ -33,6 +33,7 @@
       padding-bottom: env(safe-area-inset-bottom);
       overscroll-behavior-y: none;
     }
+    
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
@@ -148,7 +149,7 @@
         });
     };
 
-    // --- TaskItem 組件 ---
+    // --- TaskItem 組件 (工作管制卡片) ---
     const TaskItem = ({ task, onClick, onComplete, onDelete, onDragStart, onDragOver, onDrop, isDraggable }) => {
         const [swipeX, setSwipeX] = useState(0);
         const touchStartX = useRef(null);
@@ -249,7 +250,7 @@
       );
     };
 
-    // --- App ---
+    // --- App (主程式) ---
     function App() {
       const [user, setUser] = useState(null);
       const [records, setRecords] = useState([]); 
@@ -262,11 +263,15 @@
       const [currentView, setCurrentView] = useState("home"); 
       const [docTab, setDocTab] = useState("人勤令"); 
 
-      // Forms
+      // 公文表單相關
       const [form, setForm] = useState({ id: null, date: getCurrentDateTimeISO().split('T')[0], author: "", code: "", number: "", subject: "", docType: "一般公文", rank: "軍官", subNumber: "" });
       const [isManualNumber, setIsManualNumber] = useState(false);
       const [filter, setFilter] = useState({ type: 'all', value: '' });
+      const [sortOrder, setSortOrder] = useState('desc');
+      const [editingSubNumId, setEditingSubNumId] = useState(null);
+      const [editingSubNumVal, setEditingSubNumVal] = useState("");
 
+      // 工作管制相關
       const [showTaskModal, setShowTaskModal] = useState(false);
       const [taskFilter, setTaskFilter] = useState("全部"); 
       const [taskSearch, setTaskSearch] = useState("");
@@ -275,14 +280,14 @@
       const dragOverItem = useRef(null);
       const fileInputRef = useRef(null);
 
-      // Settings
+      // 系統設定相關
       const [newAuthorName, setNewAuthorName] = useState(""); 
       const [newTaskType, setNewTaskType] = useState(""); 
       const [editingDefault, setEditingDefault] = useState(null);
 
       useEffect(() => auth.onAuthStateChanged(u => setUser(u)), []);
 
-      // Data Sync
+      // 資料同步 (修復了排序邏輯，確保舊資料顯示)
       useEffect(() => {
         if (!user) return;
         setLoadingData(true);
@@ -290,7 +295,7 @@
         
         const unsubRec = userRef.collection("records").orderBy("createdAt", "desc").limit(300).onSnapshot(snap => setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
         
-        // 重要修正：移除 orderBy("order") 避免舊資料消失，改為前端排序
+        // 修正：不使用 orderBy("order") 避免舊資料被隱藏，改在前端排序
         const unsubTask = userRef.collection("tasks").orderBy("createdAt", "desc").onSnapshot(snap => {
             setTasks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
             setLoadingData(false);
@@ -303,7 +308,48 @@
         return () => { unsubRec(); unsubTask(); unsubMeta(); };
       }, [user]);
 
-      // --- Logic ---
+      // --- 公文邏輯 ---
+      const nextNumbers = useMemo(() => {
+        const today = new Date(); const rocYear = today.getFullYear() - 1911; const prefix = String(rocYear); 
+        const mainNums = records.map(r=>r.number).filter(n=>n && String(n).startsWith(prefix)).map(n=>parseInt(n,10)).filter(n=>!isNaN(n));
+        const main = mainNums.length===0 ? prefix+"0000001" : String(Math.max(...mainNums)+1);
+        const getSub = (type, rank) => {
+          if (type==="一般公文") return "";
+          const nums = records.filter(r=>r.docType===type && r.rank===rank && r.subNumber).map(r=>parseInt(r.subNumber,10)).filter(n=>!isNaN(n));
+          return nums.length===0 ? "001" : String(Math.max(...nums)+1).padStart(3,'0');
+        };
+        return { main, getSub };
+      }, [records]);
+
+      useEffect(() => {
+        if (!form.id && !isManualNumber) setForm(p => ({ ...p, number: nextNumbers.main, subNumber: nextNumbers.getSub(form.docType, form.rank) }));
+      }, [records, form.docType, form.rank, form.id, isManualNumber, nextNumbers]);
+
+      const handleSubmit = async (forceNew) => {
+        if(!form.date||!form.author||!form.code||!form.subject) return alert("資料不完整");
+        setProcessing(true);
+        try {
+          const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
+          const finalMain = (forceNew||!form.id) && !isManualNumber ? nextNumbers.main : form.number;
+          const payload = { ...form, number: finalMain, subNumber: form.subNumber||"", updatedAt: new Date().toISOString() };
+          delete payload.id;
+          if (forceNew||!form.id) { payload.createdAt = new Date().toISOString(); await userRef.collection("records").add(payload); }
+          else await userRef.collection("records").doc(form.id).set(payload, { merge: true });
+          
+          if(form.author && form.code) userRef.collection("metadata").doc("general").set({ authors: firebase.firestore.FieldValue.arrayUnion(form.author), codes: firebase.firestore.FieldValue.arrayUnion(form.code) }, {merge:true});
+          setForm({ id: null, date: form.date, author: form.author, code: form.code, number: "", subject: "", docType: "一般公文", rank: "軍官", subNumber: "" });
+          setIsManualNumber(false); window.scrollTo({top:0, behavior:'smooth'});
+        } catch(e){ alert(e.message); } finally{ setProcessing(false); }
+      };
+
+      const copyToClipboard = (r) => {
+         const text = `${formatDateNoYear(r.date)}${r.code}${r.number?r.number.slice(-3):"000"}號：${r.subject}`;
+         navigator.clipboard.writeText(text).then(()=>{ 
+             const btn=document.getElementById(`copy-${r.id}`); if(btn){const h=btn.innerHTML;btn.innerHTML='<i class="fas fa-check text-emerald-500"></i>';setTimeout(()=>btn.innerHTML=h,1500);} 
+         });
+      };
+
+      // --- 工作管制邏輯 ---
       const handleTaskSubmit = async () => {
          if(!taskForm.title) return alert("請輸入工作名稱");
          setProcessing(true);
@@ -312,65 +358,12 @@
             const payload = { ...taskForm, updatedAt: new Date().toISOString() };
             const id = payload.id; delete payload.id; 
             if (id) await userRef.doc(id).update(payload);
-            else {
-               payload.createdAt = new Date().toISOString();
-               payload.order = Date.now(); // 預設排序
-               await userRef.add(payload);
-            }
+            else { payload.createdAt = new Date().toISOString(); payload.order = Date.now(); await userRef.add(payload); }
             setShowTaskModal(false);
-         } catch(e) { alert("儲存失敗：" + e.message); } finally { setProcessing(false); }
+         } catch(e) { alert("儲存失敗"); } finally { setProcessing(false); }
       };
 
-      const handleImport = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        if(!confirm("確定要匯入？\n將匯入公文紀錄與工作管制。")) { e.target.value = null; return; }
-        setProcessing(true);
-        const reader = new FileReader();
-        reader.onload = async (evt) => {
-          try {
-            const data = evt.target.result;
-            const workbook = XLSX.read(data, { type: 'binary' });
-            const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-            let count = 0;
-
-            // 匯入公文
-            const recSheet = workbook.Sheets["公文紀錄"];
-            if(recSheet) {
-               const json = XLSX.utils.sheet_to_json(recSheet);
-               for(let row of json) {
-                  if(row["總號"] && row["主旨"]) {
-                     await userRef.collection("records").add({
-                        number: String(row["總號"]), date: row["日期"], author: row["發文者"], code: row["代字"],
-                        subject: row["主旨"], subNumber: String(row["分號"]||""), docType: row["種類"]||"一般公文", rank: row["階級"]||"軍官",
-                        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
-                     });
-                     count++;
-                  }
-               }
-            }
-            // 修正：增加匯入工作管制
-            const taskSheet = workbook.Sheets["工作管制"];
-            if(taskSheet) {
-               const json = XLSX.utils.sheet_to_json(taskSheet);
-               for(let row of json) {
-                  if(row["標題"]) {
-                     await userRef.collection("tasks").add({
-                        title: row["標題"], type: row["業務種類"]||"行政", delegator: row["委託人"]||"", priority: row["重要性"]||"一般",
-                        startDate: row["開始時間"]||new Date().toISOString(), endDate: row["結束時間"]||new Date().toISOString(), notes: row["備註"]||"",
-                        status: "active", order: Date.now(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
-                     });
-                     count++;
-                  }
-               }
-            }
-            alert(`匯入完成！`); window.location.reload();
-          } catch (err) { alert("匯入失敗：" + err.message); } finally { setProcessing(false); e.target.value = null; }
-        };
-        reader.readAsBinaryString(file);
-      };
-
-      // Drag Drop
+      // 拖曳排序
       const handleDrop = async () => {
           if (dragItem.current === null || dragOverItem.current === null || dragItem.current === dragOverItem.current) return;
           const _tasks = [...filteredTasks];
@@ -385,7 +378,6 @@
           dragItem.current = null; dragOverItem.current = null;
       };
 
-      // Filter
       const filteredTasks = useMemo(() => {
          let res = [...tasks];
          if(taskFilter !== "全部") res = res.filter(t => t.priority === taskFilter);
@@ -393,7 +385,6 @@
          res.sort((a, b) => {
              if (a.status === 'completed' && b.status !== 'completed') return 1;
              if (a.status !== 'completed' && b.status === 'completed') return -1;
-             // 修正排序：若無 order (舊資料)，視為極小值排在最前，方便重新整理
              const orderA = a.order === undefined ? -1 : a.order;
              const orderB = b.order === undefined ? -1 : b.order;
              return orderA - orderB;
@@ -401,8 +392,14 @@
          return res;
       }, [tasks, taskFilter, taskSearch]);
 
-      // Helper functions from previous code...
-      const handleExport = () => { /* ... export logic ... */ 
+      const handleImageUpload = async (e) => {
+          const file = e.target.files[0]; if(!file) return; setProcessing(true);
+          try { setTaskForm(p => ({ ...p, imageUrl: null })); const b64 = await compressImage(file); setTaskForm(p => ({ ...p, imageUrl: b64 })); } 
+          catch(err){alert("圖片失敗");} finally{setProcessing(false);}
+      };
+
+      // --- 匯出匯入 ---
+      const handleExport = () => {
           if (records.length === 0 && tasks.length === 0) return alert("無資料");
           const wb = XLSX.utils.book_new();
           if(records.length>0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(records.map(r=>({"總號":r.number,"日期":r.date,"發文者":r.author,"代字":r.code,"主旨":r.subject,"分號":r.subNumber||"","種類":r.docType,"階級":r.rank||""}))), "公文紀錄");
@@ -410,13 +407,41 @@
           XLSX.writeFile(wb, `業務系統備份_${new Date().toISOString().split('T')[0]}.xlsx`);
       };
       
-      const handleImageUpload = async (e) => {
-          const file = e.target.files[0]; if(!file) return; setProcessing(true);
-          try { setTaskForm(p => ({ ...p, imageUrl: null })); const b64 = await compressImage(file); setTaskForm(p => ({ ...p, imageUrl: b64 })); } 
-          catch(err){alert("圖片失敗");} finally{setProcessing(false);}
+      const handleImport = async (e) => {
+        const file = e.target.files[0]; if (!file) return;
+        if(!confirm("確定要匯入？")) { e.target.value = null; return; }
+        setProcessing(true);
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          try {
+            const data = evt.target.result; const wb = XLSX.read(data, { type: 'binary' });
+            const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
+            const recSheet = wb.Sheets["公文紀錄"]; const taskSheet = wb.Sheets["工作管制"];
+            if(recSheet) {
+               XLSX.utils.sheet_to_json(recSheet).forEach(r => { if(r["總號"]) userRef.collection("records").add({ number:String(r["總號"]), date:r["日期"], author:r["發文者"], code:r["代字"], subject:r["主旨"], subNumber:String(r["分號"]||""), docType:r["種類"]||"一般公文", rank:r["階級"]||"軍官", createdAt:new Date().toISOString() }); });
+            }
+            if(taskSheet) {
+               XLSX.utils.sheet_to_json(taskSheet).forEach(r => { if(r["標題"]) userRef.collection("tasks").add({ title:r["標題"], type:r["業務種類"]||"行政", delegator:r["委託人"]||"", priority:r["重要性"]||"一般", startDate:r["開始時間"]||new Date().toISOString(), endDate:r["結束時間"]||new Date().toISOString(), notes:r["備註"]||"", status:"active", order:Date.now(), createdAt:new Date().toISOString() }); });
+            }
+            alert("匯入完成"); window.location.reload();
+          } catch(err){ alert("失敗"); } finally{ setProcessing(false); e.target.value=null; }
+        };
+        reader.readAsBinaryString(file);
       };
 
-      // Render
+      // --- 系統設定 ---
+      const saveAuthorDefault = (a, c) => db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({ [`authorDefaults.${a}`]: c });
+      const saveSubNumber = async () => { try { await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(editingSubNumId).update({ subNumber: editingSubNumVal }); setEditingSubNumId(null); } catch(e){} };
+
+      // --- Render Helpers ---
+      const displayRecords = useMemo(() => {
+        let res = [...records];
+        if (filter.type === 'search') { const k=(filter.value||"").toLowerCase(); res=res.filter(r=>(r.subject||"").toLowerCase().includes(k)||(r.number||"").toLowerCase().includes(k)); }
+        return res.sort((a,b) => sortOrder==='desc' ? parseInt(b.number)-parseInt(a.number) : parseInt(a.number)-parseInt(b.number));
+      }, [records, filter, sortOrder]);
+      
+      const docSystemRecords = useMemo(() => records.filter(r => r.docType === docTab), [records, docTab]);
+
       if (!user) return <LoginScreen />;
 
       return (
@@ -428,7 +453,7 @@
             <div className="flex-1 p-4 space-y-2">
                {['home','docs','tasks','personnel'].map(v => (
                    <button key={v} onClick={()=>{setCurrentView(v);setMenuOpen(false)}} className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 ${currentView===v ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
-                      <i className={`fas fa-${v==='home'?'pen-nib':v==='docs'?'folder-open':v==='tasks'?'tasks':'cogs'} w-6 text-center`}></i> {v==='home'?'首頁':v==='docs'?'公文系統':v==='tasks'?'工作管制':'系統設定'}
+                      <i className={`fas fa-${v==='home'?'pen-nib':v==='docs'?'folder-open':v==='tasks'?'tasks':'cogs'} w-6 text-center`}></i> {v==='home'?'填寫表單':v==='docs'?'公文系統':v==='tasks'?'工作管制':'系統設定'}
                    </button>
                ))}
                <div className="border-t border-slate-100 my-2"></div>
@@ -440,12 +465,69 @@
 
           <header className="sticky top-0 z-30 bg-white/90 backdrop-blur shadow-sm border-b border-slate-100 px-4 h-14 flex items-center justify-between">
             <div className="flex items-center gap-4"><button onClick={() => setMenuOpen(true)} className="text-slate-700 text-xl"><i className="fas fa-bars"></i></button><h1 className="font-bold text-lg text-slate-800">{currentView==='home'?'填寫表單':currentView==='docs'?'公文系統':currentView==='tasks'?'工作管制':'系統設定'}</h1></div>
+            {currentView==='home' && <button onClick={()=>{setForm({id:null,date:form.date,author:form.author,code:form.code,number:"",subject:"",docType:"一般公文",rank:"軍官",subNumber:""});setIsManualNumber(false)}} className="text-sm text-slate-500">重置</button>}
           </header>
 
-          {currentView === 'home' && <main className="flex-1 w-full max-w-md mx-auto p-4 fade-in"><div className="bg-white rounded-2xl p-6 shadow-sm text-center text-slate-500"><p className="mb-4">請前往工作管制或公文系統進行操作。</p><button onClick={()=>setCurrentView('tasks')} className="bg-blue-600 text-white px-6 py-2 rounded-full">前往工作管制</button></div></main>}
-          
-          {currentView === 'docs' && <div className="p-10 text-center text-slate-400">公文系統 (請確認公文資料是否顯示)</div>}
+          {/* 1. 首頁 (表單) */}
+          {currentView === 'home' && (
+            <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-5 fade-in">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
+                 <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1"><label className="text-xs font-bold text-slate-500 ml-1">日期</label><div className="relative h-12"><div className="absolute inset-0 flex items-center px-3 border border-slate-200 rounded-xl bg-white text-slate-800 pointer-events-none">{form.date?formatDateNoYear(form.date):"選擇"}</div><input type="date" className="absolute inset-0 w-full h-full opacity-0 z-10" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} /></div></div>
+                    <div className="space-y-1"><label className="text-xs font-bold text-slate-500 ml-1">發文者</label><div className="select-wrapper"><input type="text" list="authList" className="input-ios" placeholder="選擇" value={form.author} onChange={e=>{setForm({...form,author:e.target.value}); if(meta.authorDefaults?.[e.target.value]) setForm(p=>({...p,code:meta.authorDefaults[e.target.value]}))}} /><datalist id="authList">{meta.authors.map(a=><option key={a} value={a}/>)}</datalist></div></div>
+                 </div>
+                 <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1"><label className="text-xs font-bold text-slate-500 ml-1">代字</label><div className="select-wrapper"><input type="text" list="codeList" className="input-ios" placeholder="選擇" value={form.code} onChange={e=>setForm({...form,code:e.target.value})} /><datalist id="codeList">{meta.codes.map(c=><option key={c} value={c}/>)}</datalist></div></div>
+                    <div className="grid grid-cols-3 gap-2">
+                       <div className="col-span-2 space-y-1"><label className="text-xs font-bold text-slate-500 ml-1">總號</label><div className="relative"><input type="text" readOnly={!isManualNumber} value={form.number&&form.number.length>3?form.number.slice(-3):form.number} onChange={e=>{const v=e.target.value; const p=(form.number&&form.number.length>3)?form.number.slice(0,-3):""; setForm({...form,number:p+v})}} className={`input-ios text-right font-mono font-bold pr-10 ${isManualNumber?"border-blue-400":"bg-slate-50"}`} placeholder="000" /><button onClick={()=>setIsManualNumber(!isManualNumber)} className="absolute right-0 top-0 bottom-0 px-3 text-slate-400"><i className={`fas ${isManualNumber?"fa-lock-open":"fa-lock"}`}></i></button></div></div>
+                       <div className="col-span-1 space-y-1"><label className="text-xs font-bold text-slate-500 ml-1">分號</label><input type="number" value={form.subNumber?parseInt(form.subNumber,10):""} onChange={e=>setForm({...form,subNumber:e.target.value?e.target.value.padStart(3,'0'):""})} className="input-ios text-center font-mono font-bold" placeholder="無" /></div>
+                    </div>
+                 </div>
+                 <div className="space-y-1"><label className="text-xs font-bold text-slate-500 ml-1">主旨</label><textarea rows="2" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-3" value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})}></textarea></div>
+                 <div className="pt-2 space-y-3">
+                    <div className="flex gap-2 p-1 bg-slate-100 rounded-lg overflow-x-auto">{['一般公文','人勤令','人職令'].map(t=><button key={t} onClick={()=>setForm({...form,docType:t})} className={`flex-1 py-2 text-xs rounded-md font-bold whitespace-nowrap ${form.docType===t?'bg-white text-blue-600 shadow-sm':'text-slate-400'}`}>{t}</button>)}</div>
+                    {form.docType!=='一般公文' && <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">{['軍官','士官','士兵'].map(r=><button key={r} onClick={()=>setForm({...form,rank:r})} className={`flex-1 py-2 text-xs rounded-md font-bold ${form.rank===r?'bg-indigo-600 text-white':'text-slate-400'}`}>{r}</button>)}</div>}
+                 </div>
+                 <div className="grid grid-cols-4 gap-2 pt-2">
+                    <button onClick={()=>{const k=prompt("關鍵字");if(k)setFilter({type:'search',value:k})}} className="col-span-1 h-12 rounded-xl border font-bold bg-white text-slate-600">查詢</button>
+                    <button onClick={()=>{setIsManualNumber(true);handleSubmit(false)}} disabled={!form.id} className={`col-span-1 h-12 rounded-xl border font-bold ${form.id?'bg-blue-50 text-blue-600':'bg-slate-50 text-slate-300'}`}>修改</button>
+                    <button onClick={()=>handleSubmit(true)} disabled={processing} className="col-span-2 h-12 rounded-xl bg-slate-900 text-white font-bold shadow-lg flex justify-center items-center">{processing?<i className="fas fa-circle-notch fa-spin"></i>:"登錄"}</button>
+                 </div>
+              </div>
+              <div className="space-y-4">
+                 <h2 className="font-bold text-slate-800 text-lg px-2">{filter.type==='search'?`搜尋: ${filter.value}`:'最近紀錄'} {filter.type==='search'&&<button onClick={()=>setFilter({type:'all'})} className="text-xs text-blue-500 ml-2">清除</button>}</h2>
+                 {displayRecords.slice(0,20).map(r=>(
+                   <div key={r.id} onClick={()=>{setForm({...r});setIsManualNumber(true);window.scrollTo({top:0,behavior:'smooth'})}} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden active:bg-slate-50">
+                      <div className="flex justify-between items-start mb-1"><span className="font-mono font-bold text-blue-600 text-lg">#{r.number}</span><div className="text-xs text-slate-400">{formatDateNoYear(r.date)}</div></div>
+                      <div className="text-base font-bold text-slate-800 mb-2 line-clamp-1">{r.subject}</div>
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                          <span className="bg-slate-100 px-2 py-1 rounded">{r.author}</span> {r.docType!=='一般公文'&&<span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded">{r.docType} {r.subNumber}</span>}
+                          <div className="ml-auto flex gap-2"><button onClick={(e)=>{e.stopPropagation();copyToClipboard(r)}} id={`copy-${r.id}`} className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded border border-emerald-100"><i className="fas fa-copy"></i></button><button onClick={(e)=>{e.stopPropagation();db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(r.id).delete()}} className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 rounded border border-red-100"><i className="fas fa-trash-alt"></i></button></div>
+                      </div>
+                   </div>
+                 ))}
+              </div>
+            </main>
+          )}
 
+          {/* 2. 公文系統 (檢視) */}
+          {currentView === 'docs' && (
+            <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-4 fade-in">
+               <div className="flex bg-slate-200 p-1 rounded-xl">
+                  {['人勤令','人職令'].map(t=><button key={t} onClick={()=>setDocTab(t)} className={`flex-1 py-2 rounded-lg text-sm font-bold ${docTab===t?'bg-white text-blue-600 shadow-sm':'text-slate-500'}`}>{t}</button>)}
+               </div>
+               <div className="space-y-3">
+                  {docSystemRecords.length===0?<div className="text-center text-slate-400 py-10">尚無資料</div>:docSystemRecords.map(r=>(
+                    <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex justify-between items-start">
+                       <div><div className="text-xs text-slate-400 mb-1">{formatDateNoYear(r.date)}</div><h3 className="font-bold text-slate-800 text-lg mb-1">{r.subject}</h3><div className="text-sm text-slate-600 bg-slate-100 inline-block px-2 py-0.5 rounded">{r.author} ({r.rank})</div></div>
+                       <div className="text-right pl-2"><div className="text-[10px] text-slate-400 mb-1">分號</div>{editingSubNumId===r.id?(<div className="flex items-center gap-1"><input type="text" className="w-16 border border-blue-500 rounded px-1 py-0.5 text-center font-mono text-lg" value={editingSubNumVal} onChange={e=>setEditingSubNumVal(e.target.value)} autoFocus /><div className="flex flex-col gap-1"><button onClick={saveSubNumber} className="w-6 h-6 bg-green-500 text-white rounded flex items-center justify-center"><i className="fas fa-check text-xs"></i></button><button onClick={()=>setEditingSubNumId(null)} className="w-6 h-6 bg-gray-300 text-white rounded flex items-center justify-center"><i className="fas fa-times text-xs"></i></button></div></div>):(<div className="group cursor-pointer" onClick={()=>{setEditingSubNumId(r.id);setEditingSubNumVal(r.subNumber||"")}}><span className="font-mono font-bold text-blue-900 text-2xl border-b border-transparent group-hover:border-blue-300 transition-all">{r.subNumber}</span></div>)}</div>
+                    </div>
+                  ))}
+               </div>
+            </main>
+          )}
+
+          {/* 3. 工作管制 */}
           {currentView === 'tasks' && (
              <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-4 fade-in">
                 <div className="bg-white p-2 rounded-2xl shadow-sm space-y-2">
@@ -465,10 +547,20 @@
                 <button onClick={()=>{ setTaskForm({ id:null, title:"", type:"行政", delegator:"", priority:"一般", startDate:getCurrentDateTimeISO(), endDate:getCurrentDateTimeISO(), notes:"", imageUrl:"", reminderMinutes:"0", status:"active", order:Date.now() }); setShowTaskModal(true); }} className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl active:scale-90 transition z-20"><i className="fas fa-plus"></i></button>
              </main>
           )}
-
-          {/* Settings & Modals omitted for brevity, logic included in full file upload if needed */}
-          {/* 這裡為了精簡顯示，若您需要「公文系統」、「人員設定」及「Modal」的完整介面，請確認上方的 TaskItem 與資料邏輯已修復。*/}
-          {/* 您可以直接使用我提供的完整程式碼，所有功能(含公文顯示)都已包含在內。 */}
+          
+          {/* 4. 系統設定 */}
+          {currentView === 'personnel' && (
+            <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-6 fade-in">
+               <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 bg-slate-50"><h2 className="font-bold text-slate-700 mb-3">業務種類設定</h2><div className="flex gap-2"><input type="text" value={newTaskType} onChange={e=>setNewTaskType(e.target.value)} placeholder="例如：裝備、伙食..." className="flex-1 px-3 py-2 border border-slate-300 rounded-lg outline-none" /><button onClick={()=>{if(newTaskType)db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({taskTypes:firebase.firestore.FieldValue.arrayUnion(newTaskType)});setNewTaskType("")}} className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold shadow-sm">新增</button></div></div>
+                  <div className="p-4 flex flex-wrap gap-2">{meta.taskTypes.map(t=><div key={t} className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm font-bold">{t}<button onClick={()=>db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({taskTypes:firebase.firestore.FieldValue.arrayRemove(t)})} className="text-slate-400 hover:text-red-500 px-1"><i className="fas fa-times"></i></button></div>)}</div>
+               </div>
+               <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 bg-slate-50"><h2 className="font-bold text-slate-700 mb-3">人員設定</h2><div className="flex gap-2"><input type="text" value={newAuthorName} onChange={e=>setNewAuthorName(e.target.value)} placeholder="輸入姓名..." className="flex-1 px-3 py-2 border border-slate-300 rounded-lg outline-none" /><button onClick={()=>{if(newAuthorName)db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({authors:firebase.firestore.FieldValue.arrayUnion(newAuthorName)});setNewAuthorName("")}} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm">新增</button></div></div>
+                  <div className="divide-y divide-slate-100">{meta.authors.map(a=><div key={a} className="p-4 flex justify-between items-center hover:bg-slate-50"><div><div className="font-bold text-slate-800 text-lg">{a}</div><div className="text-xs text-slate-400 mt-1 flex items-center gap-1 cursor-pointer" onClick={()=>setEditingDefault(a)}><i className="fas fa-link"></i>{editingDefault===a?(<select className="bg-white border rounded" value={meta.authorDefaults?.[a]||""} onChange={e=>{saveAuthorDefault(a,e.target.value);setEditingDefault(null)}} onBlur={()=>setEditingDefault(null)} autoFocus><option value="">無</option>{meta.codes.map(c=><option key={c} value={c}>{c}</option>)}</select>):(<span>預設: {meta.authorDefaults?.[a]||"未設定"}</span>)}</div></div><button onClick={()=>db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({authors:firebase.firestore.FieldValue.arrayRemove(a)})} className="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-red-500 rounded-full"><i className="fas fa-trash-alt"></i></button></div>))}</div>
+               </div>
+            </main>
+          )}
 
           {showTaskModal && (
              <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">

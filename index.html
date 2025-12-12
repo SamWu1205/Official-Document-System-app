@@ -23,6 +23,18 @@
 
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
+  <script>
+    window.onerror = function(message, source, lineno, colno, error) {
+      document.getElementById('root').innerHTML = 
+        '<div style="padding:20px; color:red; font-size:16px; font-family:sans-serif;">' +
+        '<h2 style="font-size:24px; margin-bottom:10px;">⚠️ 系統發生錯誤</h2>' +
+        '<p><strong>錯誤訊息：</strong> ' + message + '</p>' +
+        '<p><strong>位置：</strong> 第 ' + lineno + ' 行</p>' +
+        '<p>請截圖此畫面並提供給開發人員。</p>' +
+        '</div>';
+    };
+  </script>
+
   <style>
     /* iPhone 優化設置 */
     * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
@@ -31,7 +43,7 @@
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; 
       padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
-      overscroll-behavior-y: none; /* 防止下拉重整干擾拖曳 */
+      overscroll-behavior-y: none;
     }
     
     .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -39,34 +51,17 @@
 
     /* iOS 風格輸入框 */
     .input-ios {
-      height: 48px;
-      width: 100%;
-      font-size: 16px; 
-      padding: 0 12px;
-      border-radius: 10px;
-      border: 1px solid #e2e8f0;
-      background-color: #fff;
-      appearance: none;
-      transition: all 0.2s;
+      height: 48px; width: 100%; font-size: 16px; padding: 0 12px;
+      border-radius: 10px; border: 1px solid #e2e8f0; background-color: #fff;
+      appearance: none; transition: all 0.2s;
     }
-    .input-ios:focus {
-      border-color: #3b82f6;
-      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-      outline: none;
-    }
+    .input-ios:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1); outline: none; }
     
     .select-wrapper { position: relative; }
     .select-wrapper::after {
-      content: '\f078';
-      font-family: 'Font Awesome 6 Free';
-      font-weight: 900;
-      font-size: 12px;
-      position: absolute;
-      right: 14px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: #94a3b8;
-      pointer-events: none;
+      content: '\f078'; font-family: 'Font Awesome 6 Free'; font-weight: 900;
+      font-size: 12px; position: absolute; right: 14px; top: 50%;
+      transform: translateY(-50%); color: #94a3b8; pointer-events: none;
     }
 
     /* 動畫類 */
@@ -77,34 +72,22 @@
     .fade-in { animation: fadeIn 0.4s ease-in-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     
-    /* 點狀背景 */
-    .bg-dot-pattern {
-      background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
-      background-size: 20px 20px;
-    }
-
-    /* 鈴鐺搖晃動畫 */
+    .bg-dot-pattern { background-image: radial-gradient(#cbd5e1 1px, transparent 1px); background-size: 20px 20px; }
+    
     @keyframes bellShake {
-      0% { transform: rotate(0); }
-      15% { transform: rotate(15deg); }
-      30% { transform: rotate(-15deg); }
-      45% { transform: rotate(10deg); }
-      60% { transform: rotate(-10deg); }
-      75% { transform: rotate(5deg); }
-      85% { transform: rotate(-5deg); }
-      100% { transform: rotate(0); }
+      0% { transform: rotate(0); } 15% { transform: rotate(15deg); } 30% { transform: rotate(-15deg); }
+      45% { transform: rotate(10deg); } 60% { transform: rotate(-10deg); } 75% { transform: rotate(5deg); }
+      85% { transform: rotate(-5deg); } 100% { transform: rotate(0); }
     }
     .animate-bell { animation: bellShake 1s ease-in-out infinite; }
-    
-    /* 卡片拖曳與滑動過渡 */
     .card-content { transition: transform 0.1s ease-out; }
   </style>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root" class="flex h-screen items-center justify-center text-slate-400">系統啟動中...</div>
 
   <script type="text/babel" data-presets="env,react">
-    // Firebase 設定
+    // 3. Firebase 設定
     const firebaseConfig = {
       apiKey: "AIzaSyAHLUkaGRW7j7ZHFaTEJMKNbkMzZm218w4",
       authDomain: "official-document-system-239ab.firebaseapp.com",
@@ -125,8 +108,6 @@
     const { useState, useEffect, useMemo, useRef } = React;
 
     // --- 工具函數 ---
-    
-    // 格式化日期 (隱藏年份)
     const formatDateNoYear = (dateStr) => {
        if(!dateStr) return "";
        const parts = dateStr.split('-');
@@ -134,21 +115,18 @@
        return `${parseInt(parts[1], 10)}月${parseInt(parts[2], 10)}日`;
     };
 
-    // 格式化日期+時間
     const formatDateTime = (isoStr) => {
        if (!isoStr) return "";
        const date = new Date(isoStr);
        return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
     };
 
-    // 取得當前時間 ISO 字串
     const getCurrentDateTimeISO = () => {
         const now = new Date();
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         return now.toISOString().slice(0, 16);
     };
 
-    // 計算剩餘時間字串
     const getRemainingText = (endDateStr) => {
       if (!endDateStr) return null;
       const now = new Date();
@@ -166,7 +144,6 @@
       return `剩 ${diffMins} 分`;
     };
 
-    // 圖片壓縮
     const compressImage = (file, maxWidth = 800, quality = 0.7) => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -194,12 +171,11 @@
         });
     };
 
-    // --- 元件：工作管制卡片 (含滑動與拖曳) ---
+    // --- 元件：工作管制卡片 (TaskItem) ---
     const TaskItem = ({ task, onClick, onComplete, onDelete, onDragStart, onDragOver, onDrop, isDraggable }) => {
         const [swipeX, setSwipeX] = useState(0);
         const touchStartX = useRef(null);
 
-        // 提醒與狀態判斷
         const now = new Date();
         const end = new Date(task.endDate);
         const diffMs = end - now;
@@ -210,7 +186,6 @@
         const isCompleted = task.status === 'completed';
         const priorityColor = task.priority === '急件' ? 'bg-red-500' : task.priority === '一般' ? 'bg-emerald-500' : 'bg-purple-500';
 
-        // 滑動手勢邏輯
         const handleTouchStart = (e) => {
             if(isCompleted) return;
             touchStartX.current = e.touches[0].clientX;
@@ -220,7 +195,6 @@
             if (!touchStartX.current || isCompleted) return;
             const currentX = e.touches[0].clientX;
             const diff = currentX - touchStartX.current;
-            // 限制只能左滑，最大位移 120px
             if (diff < 0 && diff > -120) {
                 setSwipeX(diff);
             }
@@ -228,13 +202,12 @@
 
         const handleTouchEnd = () => {
             if (!touchStartX.current || isCompleted) return;
-            // 滑動超過 80px 觸發辦結
             if (swipeX < -80) {
                 if(confirm("確定辦結此工作？")) {
                     onComplete(task.id);
                 }
             }
-            setSwipeX(0); // 回彈
+            setSwipeX(0);
             touchStartX.current = null;
         };
 
@@ -246,12 +219,10 @@
                 onDragOver={isDraggable ? onDragOver : null}
                 onDrop={isDraggable ? onDrop : null}
             >
-                {/* 背景層 (顯示辦結按鈕) */}
                 <div className="absolute inset-0 bg-blue-500 flex items-center justify-end pr-6 rounded-2xl">
                     <span className="text-white font-bold"><i className="fas fa-check mr-1"></i> 辦結</span>
                 </div>
 
-                {/* 前景層 (卡片內容) */}
                 <div 
                     className="relative bg-white p-4 card-content"
                     style={{ transform: `translateX(${swipeX}px)` }}
@@ -277,7 +248,6 @@
                           </div>
                        </div>
                        
-                       {/* 右側：倒數與按鈕 */}
                        <div className="flex flex-col items-end pl-2 gap-1">
                           {isCompleted ? (
                               <span className="text-xs font-bold bg-slate-200 text-slate-500 px-2 py-1 rounded-lg">已辦結</span>
@@ -308,7 +278,7 @@
         );
     };
 
-    // --- 元件：登入畫面 ---
+    // --- 元件：登入畫面 (LoginScreen) ---
     const LoginScreen = () => {
       const [isRegister, setIsRegister] = useState(false);
       const [email, setEmail] = useState("");
@@ -425,13 +395,11 @@
         setLoadingData(true);
         const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
         
-        // 公文資料
         const unsubRec = userRef.collection("records")
             .orderBy("createdAt", "desc")
             .limit(300)
             .onSnapshot(snap => setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
         
-        // 工作資料 (修正排序問題：不依賴 order 欄位進行資料庫排序，改由前端排序)
         const unsubTask = userRef.collection("tasks")
             .orderBy("createdAt", "desc")
             .onSnapshot(snap => {
@@ -439,7 +407,6 @@
                 setLoadingData(false);
             });
 
-        // 元數據
         const unsubMeta = userRef.collection("metadata").doc("general").onSnapshot(doc => {
             if (doc.exists) {
                 const data = doc.data();
@@ -456,7 +423,6 @@
 
       // --- 邏輯函數 ---
 
-      // 公文自動跳號
       const nextNumbers = useMemo(() => {
         const today = new Date(); const rocYear = today.getFullYear() - 1911; const prefix = String(rocYear); 
         const mainNums = records.map(r=>r.number).filter(n=>n && String(n).startsWith(prefix)).map(n=>parseInt(n,10)).filter(n=>!isNaN(n));
@@ -473,7 +439,6 @@
         if (!form.id && !isManualNumber) setForm(p => ({ ...p, number: nextNumbers.main, subNumber: nextNumbers.getSub(form.docType, form.rank) }));
       }, [records, form.docType, form.rank, form.id, isManualNumber, nextNumbers]);
 
-      // 提交公文
       const handleSubmit = async (forceNew) => {
         if(!form.date||!form.author||!form.code||!form.subject) return alert("資料不完整");
         setProcessing(true);
@@ -520,7 +485,6 @@
                await userRef.doc(id).update(payload);
             } else {
                payload.createdAt = new Date().toISOString();
-               // 如果是新工作，排序設為當下時間戳（確保唯一且可排序）
                payload.order = Date.now();
                await userRef.add(payload);
             }
@@ -532,18 +496,15 @@
       const handleDrop = async () => {
           if (dragItem.current === null || dragOverItem.current === null || dragItem.current === dragOverItem.current) return;
           
-          // 前端重新排序
           const _tasks = [...filteredTasks];
           const dragged = _tasks[dragItem.current];
           _tasks.splice(dragItem.current, 1);
           _tasks.splice(dragOverItem.current, 0, dragged);
           
-          // 寫入資料庫
           const batch = db.batch();
           const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks");
           
           _tasks.forEach((t, index) => {
-              // 簡單邏輯：將當前列表順序寫入 order 欄位
               if(t.id) batch.update(userRef.doc(t.id), { order: index });
           });
 
@@ -554,16 +515,12 @@
       // 工作篩選與排序
       const filteredTasks = useMemo(() => {
          let res = [...tasks];
-         // 篩選
          if(taskFilter !== "全部") res = res.filter(t => t.priority === taskFilter);
          if(taskSearch) res = res.filter(t => t.title?.toLowerCase().includes(taskSearch.toLowerCase()));
          
-         // 排序：未完成在前，已完成在後。同類別依 order 排序。
          res.sort((a, b) => {
              if (a.status === 'completed' && b.status !== 'completed') return 1;
              if (a.status !== 'completed' && b.status === 'completed') return -1;
-             
-             // 如果沒有 order (舊資料)，給個預設值讓它排在前面或後面
              const orderA = a.order === undefined ? -1 : a.order;
              const orderB = b.order === undefined ? -1 : b.order;
              return orderA - orderB;
@@ -599,7 +556,6 @@
             const data = evt.target.result; const wb = XLSX.read(data, { type: 'binary' });
             const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
             const recSheet = wb.Sheets["公文紀錄"]; const taskSheet = wb.Sheets["工作管制"];
-            
             let count = 0;
             if(recSheet) {
                XLSX.utils.sheet_to_json(recSheet).forEach(r => { 
@@ -626,24 +582,11 @@
                    }
                });
             }
-            alert(`匯入完成，共 ${count} 筆資料`); 
-            window.location.reload();
+            alert(`匯入完成，共 ${count} 筆資料`); window.location.reload();
           } catch(err){ alert("失敗: " + err.message); } finally{ setProcessing(false); e.target.value=null; }
         };
         reader.readAsBinaryString(file);
       };
-
-      // 渲染列表輔助
-      const displayRecords = useMemo(() => {
-        let res = [...records];
-        if (filter.type === 'search') { 
-            const k=(filter.value||"").toLowerCase(); 
-            res=res.filter(r=>(r.subject||"").toLowerCase().includes(k)||(r.number||"").toLowerCase().includes(k)); 
-        }
-        return res.sort((a,b) => sortOrder==='desc' ? parseInt(b.number)-parseInt(a.number) : parseInt(a.number)-parseInt(b.number));
-      }, [records, filter, sortOrder]);
-      
-      const docSystemRecords = useMemo(() => records.filter(r => r.docType === docTab), [records, docTab]);
 
       // --- Render 渲染層 ---
       if (!user) return <LoginScreen />;
@@ -691,7 +634,6 @@
           {currentView === 'home' && (
             <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-5 fade-in">
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
-                 {/* ... 表單內容 ... */}
                  <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1"><label className="text-xs font-bold text-slate-500 ml-1">日期</label><div className="relative h-12"><div className="absolute inset-0 flex items-center px-3 border border-slate-200 rounded-xl bg-white text-slate-800 pointer-events-none">{form.date?formatDateNoYear(form.date):"選擇"}</div><input type="date" className="absolute inset-0 w-full h-full opacity-0 z-10" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} /></div></div>
                     <div className="space-y-1"><label className="text-xs font-bold text-slate-500 ml-1">發文者</label><div className="select-wrapper"><input type="text" list="authList" className="input-ios" placeholder="選擇" value={form.author} onChange={e=>{setForm({...form,author:e.target.value}); if(meta.authorDefaults?.[e.target.value]) setForm(p=>({...p,code:meta.authorDefaults[e.target.value]}))}} /><datalist id="authList">{meta.authors.map(a=><option key={a} value={a}/>)}</datalist></div></div>
@@ -704,12 +646,10 @@
                     </div>
                  </div>
                  <div className="space-y-1"><label className="text-xs font-bold text-slate-500 ml-1">主旨</label><textarea rows="2" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-3" value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})}></textarea></div>
-                 
                  <div className="pt-2 space-y-3">
                     <div className="flex gap-2 p-1 bg-slate-100 rounded-lg overflow-x-auto">{['一般公文','人勤令','人職令'].map(t=><button key={t} onClick={()=>setForm({...form,docType:t})} className={`flex-1 py-2 text-xs rounded-md font-bold whitespace-nowrap ${form.docType===t?'bg-white text-blue-600 shadow-sm':'text-slate-400'}`}>{t}</button>)}</div>
                     {form.docType!=='一般公文' && <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">{['軍官','士官','士兵'].map(r=><button key={r} onClick={()=>setForm({...form,rank:r})} className={`flex-1 py-2 text-xs rounded-md font-bold ${form.rank===r?'bg-indigo-600 text-white':'text-slate-400'}`}>{r}</button>)}</div>}
                  </div>
-                 
                  <div className="grid grid-cols-4 gap-2 pt-2">
                     <button onClick={()=>{const k=prompt("關鍵字");if(k)setFilter({type:'search',value:k})}} className="col-span-1 h-12 rounded-xl border font-bold bg-white text-slate-600">查詢</button>
                     <button onClick={()=>{setIsManualNumber(true);handleSubmit(false)}} disabled={!form.id} className={`col-span-1 h-12 rounded-xl border font-bold ${form.id?'bg-blue-50 text-blue-600':'bg-slate-50 text-slate-300'}`}>修改</button>
@@ -811,7 +751,7 @@
                          <div><label className="text-xs font-bold text-slate-500 ml-1">開始</label><input type="datetime-local" className="input-ios bg-slate-50 text-xs px-1" value={taskForm.startDate} onChange={e=>setTaskForm({...taskForm,startDate:e.target.value})} /></div>
                          <div><label className="text-xs font-bold text-slate-500 ml-1">結束</label><input type="datetime-local" className="input-ios bg-slate-50 text-xs px-1" value={taskForm.endDate} onChange={e=>setTaskForm({...taskForm,endDate:e.target.value})} /></div>
                       </div>
-                      <div><label className="text-xs font-bold text-slate-500 ml-1">提醒</label><div className="select-wrapper"><select className="input-ios bg-slate-50" value={taskForm.reminderMinutes} onChange={e=>setTaskForm({...taskForm,reminderMinutes:e.target.value})}><option value="0">不提醒</option><option value="30">30 分鐘前</option><option value="60">1 小時前</option><option value="1440">1 天前</option></select></div></div>
+                      <div><label className="text-xs font-bold text-slate-500 ml-1">提醒</label><div className="select-wrapper"><select className="input-ios bg-slate-50" value={taskForm.reminderMinutes} onChange={e=>setTaskForm({...taskForm,reminderMinutes:e.target.value})}><option value="0">不提醒</option><option value="10">10 分鐘前</option><option value="30">30 分鐘前</option><option value="60">1 小時前</option><option value="120">2 小時前</option><option value="1440">1 天前</option><option value="4320">3 天前</option></select></div></div>
                       <div>
                          <label className="text-xs font-bold text-slate-500 ml-1">備註/圖片</label>
                          <div className="relative">

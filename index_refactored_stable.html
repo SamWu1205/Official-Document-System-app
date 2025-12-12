@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>業務管理系統</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-slate-50">
+<div id="root"></div>
+
+<script type="text/babel">
+/* ================= Firebase ================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyAHLUkaGRW7j7ZHFaTEJMKNbkMzZm218w4",
+  authDomain: "official-document-system-239ab.firebaseapp.com",
+  projectId: "official-document-system-239ab",
+};
+firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
+const db = firebase.firestore();
+const CURRENT_APP_ID = "dispatch-system-pro-v1";
+
+/* ================= Auth Context ================= */
+const AuthContext = React.createContext(null);
+const useAuth = () => React.useContext(AuthContext);
+
+function AuthProvider({ children }) {
+  const [user, setUser] = React.useState(null);
+  const [checking, setChecking] = React.useState(true);
+
+  React.useEffect(() => {
+    const unsub = auth.onAuthStateChanged(u => {
+      setUser(u);
+      setChecking(false);
+    });
+    return () => unsub();
+  }, []);
+
+  return (
+    <AuthContext.Provider value={{ user, checking }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+/* ================= Records Context ================= */
+const RecordsContext = React.createContext(null);
+const useRecords = () => React.useContext(RecordsContext);
+
+function RecordsProvider({ children }) {
+  const { user } = useAuth();
+  const [records, setRecords] = React.useState([]);
+
+  React.useEffect(() => {
+    if (!user) {
+      setRecords([]);
+      return;
+    }
+    const ref = db.collection("artifacts").doc(CURRENT_APP_ID)
+      .collection("users").doc(user.uid)
+      .collection("records")
+      .orderBy("createdAt", "desc")
+      .limit(300);
+
+    const unsub = ref.onSnapshot(snap => {
+      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [user]);
+
+  return (
+    <RecordsContext.Provider value={{ records }}>
+      {children}
+    </RecordsContext.Provider>
+  );
+}
+
+/* ================= Tasks Context ================= */
+const TasksContext = React.createContext(null);
+const useTasks = () => React.useContext(TasksContext);
+
+function TasksProvider({ children }) {
+  const { user } = useAuth();
+  const [tasks, setTasks] = React.useState([]);
+
+  React.useEffect(() => {
+    if (!user) {
+      setTasks([]);
+      return;
+    }
+    const ref = db.collection("artifacts").doc(CURRENT_APP_ID)
+      .collection("users").doc(user.uid)
+      .collection("tasks")
+      .orderBy("createdAt", "desc");
+
+    const unsub = ref.onSnapshot(snap => {
+      setTasks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [user]);
+
+  return (
+    <TasksContext.Provider value={{ tasks }}>
+      {children}
+    </TasksContext.Provider>
+  );
+}
+
+/* ================= Login ================= */
+function LoginScreen() {
+  const [email, setEmail] = React.useState("");
+  const [pw, setPw] = React.useState("");
+
+  const login = async e => {
+    e.preventDefault();
+    await auth.signInWithEmailAndPassword(email, pw);
+  };
+
+  return (
+    <div className="h-screen flex items-center justify-center">
+      <form onSubmit={login} className="bg-white p-6 rounded-xl shadow w-80 space-y-3">
+        <input className="border w-full p-2" placeholder="Email" onChange={e=>setEmail(e.target.value)} />
+        <input className="border w-full p-2" type="password" placeholder="Password" onChange={e=>setPw(e.target.value)} />
+        <button className="bg-blue-600 text-white w-full py-2 rounded">登入</button>
+      </form>
+    </div>
+  );
+}
+
+/* ================= Main ================= */
+function MainLayout() {
+  const { user, checking } = useAuth();
+  const { records } = useRecords();
+  const { tasks } = useTasks();
+
+  if (checking) return <div className="p-10">載入中...</div>;
+  if (!user) return <LoginScreen />;
+
+  return (
+    <div className="p-4 space-y-4">
+      <h1 className="text-xl font-bold">系統已穩定拆分</h1>
+      <div className="bg-white p-4 rounded shadow">
+        <div>公文筆數：{records.length}</div>
+        <div>工作筆數：{tasks.length}</div>
+      </div>
+      <button onClick={()=>auth.signOut()} className="text-red-500">登出</button>
+    </div>
+  );
+}
+
+/* ================= App ================= */
+function App() {
+  return (
+    <AuthProvider>
+      <RecordsProvider>
+        <TasksProvider>
+          <MainLayout />
+        </TasksProvider>
+      </RecordsProvider>
+    </AuthProvider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

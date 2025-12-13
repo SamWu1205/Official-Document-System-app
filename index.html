@@ -24,7 +24,7 @@
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; 
       padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
-      overflow-x: hidden; /* 防止左右滑動導致頁面搖晃 */
+      overflow-x: hidden;
     }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -248,70 +248,91 @@
        );
     });
 
-    // --- TaskItem with Swipe to Complete & Bell ---
-    const TaskItem = memo(({ t, onClick, onCloseCase }) => {
+    // --- TaskItem with Swipe to Complete & Bell Logic ---
+    const TaskItem = memo(({ t, onClick, onCloseCase, onDelete }) => {
         const remainText = getRemainingText(t.endDate);
         const priorityColor = t.priority === '急件' ? 'bg-red-500' : t.priority === '一般' ? 'bg-emerald-500' : 'bg-purple-500';
         const now = new Date(); const end = new Date(t.endDate);
         const diffMs = end - now;
-        const reminderMs = parseInt(t.reminderMinutes || 0, 10) * 60 * 1000;
-        const showReminder = reminderMs > 0 && diffMs <= reminderMs && diffMs > 0;
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        
+        // Bell Logic: Show if <= 3 days and not expired and not completed
+        const showReminder = !t.completed && diffMs > 0 && diffDays <= 3;
         const isExpired = diffMs < 0;
 
-        // Swipe Logic
+        // Swipe Logic (Only for active tasks)
         const [translateX, setTranslateX] = useState(0);
         const startX = useRef(0);
         
-        const onTouchStart = (e) => { startX.current = e.touches[0].clientX; };
+        const onTouchStart = (e) => { 
+           if(t.completed) return;
+           startX.current = e.touches[0].clientX; 
+        };
         const onTouchMove = (e) => {
+            if(t.completed) return;
             const diff = e.touches[0].clientX - startX.current;
             if (diff < 0 && diff > -100) setTranslateX(diff);
         };
         const onTouchEnd = () => {
+            if(t.completed) return;
             if (translateX < -60) setTranslateX(-80); // Snap open
             else setTranslateX(0); // Snap close
         };
 
+        const opacityClass = t.completed ? "grayscale opacity-60" : "bg-white";
+
         return (
            <div className="relative rounded-2xl overflow-hidden mb-3">
-              {/* Background Action Button (Complete/Delete) */}
-              <div className="absolute inset-0 bg-red-100 flex justify-end items-center pr-4 rounded-2xl">
-                  <button onClick={(e) => { e.stopPropagation(); onCloseCase(t.id); }} 
-                    className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold shadow-sm active:scale-95 text-xs flex flex-col items-center justify-center h-[80%]">
-                    <i className="fas fa-check-circle mb-1 text-lg"></i>
-                    結案
-                  </button>
-              </div>
+              {/* Background Action Button (Complete) */}
+              {!t.completed && (
+                <div className="absolute inset-0 bg-red-100 flex justify-end items-center pr-4 rounded-2xl">
+                    <button onClick={(e) => { e.stopPropagation(); onCloseCase(t.id); }} 
+                        className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold shadow-sm active:scale-95 text-xs flex flex-col items-center justify-center h-[80%]">
+                        <i className="fas fa-check-circle mb-1 text-lg"></i>
+                        結案
+                    </button>
+                </div>
+              )}
 
               {/* Foreground Content */}
               <div 
                  onClick={() => onClick(t)}
                  onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
                  style={{ transform: `translateX(${translateX}px)`, transition: 'transform 0.2s ease-out' }}
-                 className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 relative z-10 active:scale-[0.99]"
+                 className={`${opacityClass} rounded-2xl p-4 shadow-sm border border-slate-100 relative z-10 active:scale-[0.99]`}
               >
-                  <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${priorityColor}`}></div>
+                  <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${t.completed ? 'bg-slate-400' : priorityColor}`}></div>
                   <div className="flex justify-between items-start pl-3">
                      <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                           <h3 className="font-bold text-slate-800 text-lg line-clamp-1">{t.title}</h3>
+                           <h3 className={`font-bold text-slate-800 text-lg line-clamp-1 ${t.completed?'line-through':''}`}>{t.title}</h3>
                            {t.imageUrl && <i className="fas fa-image text-slate-400"></i>}
                         </div>
                         <div className="text-xs text-slate-500 space-y-1">
                            <div>委託人：{t.delegator} | {t.type}</div>
-                           <div className="flex items-center gap-1"><i className="far fa-clock"></i> {formatDateTime(t.endDate)}</div>
+                           {t.completed ? (
+                               <div className="text-emerald-600 font-bold"><i className="fas fa-check"></i> 結案於 {formatDateNoYear(t.completedAt)}</div>
+                           ) : (
+                               <div className="flex items-center gap-1"><i className="far fa-clock"></i> {formatDateTime(t.endDate)}</div>
+                           )}
                         </div>
                      </div>
                      <div className="flex flex-col items-end pl-2">
-                        {remainText && (
+                        {!t.completed && remainText && (
                            <div className={`text-xs font-bold px-3 py-1.5 rounded-full mb-2 whitespace-nowrap flex items-center gap-1 shadow-sm border
                               ${isExpired ? 'bg-gray-100 text-gray-500 border-gray-200' : showReminder ? 'bg-white text-red-600 border-red-100' : 'bg-slate-50 text-slate-600 border-slate-100'}`}>
                               {showReminder && <i className="fas fa-bell text-yellow-500 animate-bell"></i>}
                               {remainText}
                            </div>
                         )}
-                        {/* 提示左滑 */}
-                        <div className="text-[10px] text-slate-300"><i className="fas fa-chevron-left mr-1"></i>左滑結案</div>
+                        {!t.completed && <div className="text-[10px] text-slate-300"><i className="fas fa-chevron-left mr-1"></i>左滑結案</div>}
+                        
+                        {/* 垃圾桶：已結案才顯示，或在編輯裡刪除 */}
+                        {t.completed && (
+                            <button onClick={(e) => { e.stopPropagation(); onDelete(e, t.id); }} className="text-slate-300 hover:text-red-500 p-2">
+                                <i className="fas fa-trash-alt"></i>
+                            </button>
+                        )}
                      </div>
                   </div>
               </div>
@@ -551,10 +572,21 @@
       };
       
       const handleCloseCase = async (taskId) => {
-         if(!confirm("確定結案此工作項目？(將會刪除)")) return;
+         // Modify: Close case instead of delete
+         if(!confirm("確定結案？(案件將會移至列表底部)")) return;
          try {
-            await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(taskId).delete();
+            await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(taskId).update({
+                completed: true,
+                completedAt: new Date().toISOString()
+            });
          } catch(e) { alert("操作失敗"); }
+      };
+      
+      const deleteTask = async (e, id) => {
+         if(!confirm("確定永久刪除？")) return;
+         try {
+            await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).delete();
+         } catch(e) { alert("刪除失敗"); }
       };
       
       // -- Settings Actions --
@@ -579,8 +611,16 @@
       const handleExport = () => {
           if (records.length === 0 && tasks.length === 0) return alert("無資料");
           const wb = XLSX.utils.book_new();
+          // Sheet 1: Records
           if(records.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(records.map(r => ({ "總號":r.number, "日期":r.date, "發文者":r.author, "代字":r.code, "主旨":r.subject, "分號":r.subNumber, "種類":r.docType, "階級":r.rank }))), "公文紀錄");
-          if(tasks.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tasks.map(t => ({ "標題":t.title, "業務種類":t.type, "委託人":t.delegator, "重要性":t.priority, "開始":t.startDate, "結束":t.endDate, "備註":t.notes }))), "工作管制");
+          // Sheet 2: Tasks (New: Include Status)
+          if(tasks.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tasks.map(t => ({ 
+              "標題":t.title, "業務種類":t.type, "委託人":t.delegator, "重要性":t.priority, 
+              "開始":t.startDate, "結束":t.endDate, "備註":t.notes, 
+              "狀態": t.completed ? "已結案" : "進行中",
+              "結案日期": t.completedAt || ""
+          }))), "工作管制");
+          
           XLSX.writeFile(wb, `備份_${new Date().toISOString().slice(0,10)}.xlsx`);
       };
       
@@ -592,23 +632,47 @@
          reader.onload = async (evt) => {
             try {
                const wb = XLSX.read(evt.target.result, {type:'binary'});
-               const sheet = wb.Sheets["公文紀錄"] || wb.Sheets[wb.SheetNames[0]];
-               if(sheet){
-                  const json = XLSX.utils.sheet_to_json(sheet);
-                  const batch = db.batch(); 
-                  const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records");
-                  let count = 0;
+               const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
+               const batch = db.batch(); 
+               let count = 0;
+
+               // Import Records
+               const recSheet = wb.Sheets["公文紀錄"];
+               if(recSheet){
+                  const json = XLSX.utils.sheet_to_json(recSheet);
+                  const recRef = userRef.collection("records");
                   for(let r of json){
-                     if(r["總號"] && r["主旨"] && count < 450) { 
-                        const doc = userRef.doc();
+                     if(r["總號"] && r["主旨"] && count < 250) { 
+                        const doc = recRef.doc();
                         batch.set(doc, { number:String(r["總號"]), date:r["日期"], author:r["發文者"], code:r["代字"], subject:r["主旨"], subNumber:String(r["分號"]||""), docType:r["種類"]||"一般公文", rank:r["階級"]||"軍官", createdAt:new Date().toISOString() });
                         count++;
                      }
                   }
-                  await batch.commit();
-                  alert(`成功匯入 ${count} 筆`); window.location.reload();
                }
-            } catch(er) { alert("錯誤"); } finally { setProcessing(false); e.target.value = null; }
+               
+               // Import Tasks
+               const taskSheet = wb.Sheets["工作管制"];
+               if(taskSheet){
+                  const json = XLSX.utils.sheet_to_json(taskSheet);
+                  const taskRef = userRef.collection("tasks");
+                  for(let t of json){
+                     if(t["標題"] && count < 450) {
+                        const doc = taskRef.doc();
+                        const isCompleted = t["狀態"] === "已結案";
+                        batch.set(doc, {
+                            title: t["標題"], type: t["業務種類"]||"行政", delegator: t["委託人"]||"", priority: t["重要性"]||"一般",
+                            startDate: t["開始"]||new Date().toISOString(), endDate: t["結束"]||new Date().toISOString(), notes: t["備註"]||"",
+                            completed: isCompleted, completedAt: t["結案日期"] || (isCompleted ? new Date().toISOString() : null),
+                            createdAt: new Date().toISOString()
+                        });
+                        count++;
+                     }
+                  }
+               }
+
+               await batch.commit();
+               alert(`成功匯入 ${count} 筆資料`); window.location.reload();
+            } catch(er) { console.error(er); alert("匯入錯誤"); } finally { setProcessing(false); e.target.value = null; }
          };
          reader.readAsBinaryString(file);
       };
@@ -693,8 +757,16 @@
                    </div>
                 </div>
                 <div className="space-y-3 pb-20">
-                   {tasks.filter(t => (taskFilter==='全部'||t.priority===taskFilter) && t.title.includes(taskSearch)).sort((a,b)=>new Date(a.endDate)-new Date(b.endDate)).map(t => (
-                      <TaskItem key={t.id} t={t} onClick={(task)=>{setTaskForm({...task, reminderMinutes:task.reminderMinutes||"0", imageUrl:task.imageUrl||""}); setShowTaskModal(true);}} onCloseCase={handleCloseCase} />
+                   {tasks
+                     .filter(t => (taskFilter==='全部'||t.priority===taskFilter) && t.title.includes(taskSearch))
+                     .sort((a,b) => {
+                         // Sort logic: active first (by endDate asc), then completed (by completedAt desc)
+                         if(a.completed !== b.completed) return a.completed ? 1 : -1;
+                         if(a.completed) return new Date(b.completedAt) - new Date(a.completedAt);
+                         return new Date(a.endDate) - new Date(b.endDate);
+                     })
+                     .map(t => (
+                      <TaskItem key={t.id} t={t} onClick={(task)=>{setTaskForm({...task, reminderMinutes:task.reminderMinutes||"0", imageUrl:task.imageUrl||""}); setShowTaskModal(true);}} onCloseCase={handleCloseCase} onDelete={deleteTask} />
                    ))}
                 </div>
                 <button onClick={()=>{setTaskForm({id:null, title:"", type:"行政", delegator:"", priority:"一般", startDate:getCurrentDateTimeISO(), endDate:getCurrentDateTimeISO(), notes:"", imageUrl:"", reminderMinutes:"0"}); setShowTaskModal(true);}} className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl active:scale-90 transition z-20"><i className="fas fa-plus"></i></button>

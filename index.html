@@ -24,6 +24,7 @@
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; 
       padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
+      overflow-x: hidden; /* 防止左右滑動導致頁面搖晃 */
     }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -247,7 +248,8 @@
        );
     });
 
-    const TaskItem = memo(({ t, onClick, onDelete }) => {
+    // --- TaskItem with Swipe to Complete & Bell ---
+    const TaskItem = memo(({ t, onClick, onCloseCase }) => {
         const remainText = getRemainingText(t.endDate);
         const priorityColor = t.priority === '急件' ? 'bg-red-500' : t.priority === '一般' ? 'bg-emerald-500' : 'bg-purple-500';
         const now = new Date(); const end = new Date(t.endDate);
@@ -256,25 +258,62 @@
         const showReminder = reminderMs > 0 && diffMs <= reminderMs && diffMs > 0;
         const isExpired = diffMs < 0;
 
+        // Swipe Logic
+        const [translateX, setTranslateX] = useState(0);
+        const startX = useRef(0);
+        
+        const onTouchStart = (e) => { startX.current = e.touches[0].clientX; };
+        const onTouchMove = (e) => {
+            const diff = e.touches[0].clientX - startX.current;
+            if (diff < 0 && diff > -100) setTranslateX(diff);
+        };
+        const onTouchEnd = () => {
+            if (translateX < -60) setTranslateX(-80); // Snap open
+            else setTranslateX(0); // Snap close
+        };
+
         return (
-           <div onClick={() => onClick(t)} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 relative overflow-hidden active:scale-[0.98] transition cursor-pointer">
-              <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${priorityColor}`}></div>
-              <div className="flex justify-between items-start pl-3">
-                 <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                       <h3 className="font-bold text-slate-800 text-lg">{t.title}</h3>
-                       {showReminder && <i className="fas fa-bell text-red-500 animate-bell"></i>}
-                       {t.imageUrl && <i className="fas fa-image text-slate-400"></i>}
-                    </div>
-                    <div className="text-xs text-slate-500 space-y-1">
-                       <div>委託人：{t.delegator} | {t.type}</div>
-                       <div className="flex items-center gap-1"><i className="far fa-clock"></i> {formatDateTime(t.endDate)}</div>
-                    </div>
-                 </div>
-                 <div className="flex flex-col items-end pl-2">
-                    {remainText && <div className={`text-xs font-bold px-2 py-1 rounded-lg mb-2 whitespace-nowrap ${isExpired ? 'bg-gray-200 text-gray-500' : showReminder ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'}`}>{remainText}</div>}
-                    <button onClick={(e) => { e.stopPropagation(); onDelete(e, t.id); }} className="text-slate-300 hover:text-red-500 p-2"><i className="fas fa-trash-alt"></i></button>
-                 </div>
+           <div className="relative rounded-2xl overflow-hidden mb-3">
+              {/* Background Action Button (Complete/Delete) */}
+              <div className="absolute inset-0 bg-red-100 flex justify-end items-center pr-4 rounded-2xl">
+                  <button onClick={(e) => { e.stopPropagation(); onCloseCase(t.id); }} 
+                    className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold shadow-sm active:scale-95 text-xs flex flex-col items-center justify-center h-[80%]">
+                    <i className="fas fa-check-circle mb-1 text-lg"></i>
+                    結案
+                  </button>
+              </div>
+
+              {/* Foreground Content */}
+              <div 
+                 onClick={() => onClick(t)}
+                 onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+                 style={{ transform: `translateX(${translateX}px)`, transition: 'transform 0.2s ease-out' }}
+                 className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 relative z-10 active:scale-[0.99]"
+              >
+                  <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${priorityColor}`}></div>
+                  <div className="flex justify-between items-start pl-3">
+                     <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                           <h3 className="font-bold text-slate-800 text-lg line-clamp-1">{t.title}</h3>
+                           {t.imageUrl && <i className="fas fa-image text-slate-400"></i>}
+                        </div>
+                        <div className="text-xs text-slate-500 space-y-1">
+                           <div>委託人：{t.delegator} | {t.type}</div>
+                           <div className="flex items-center gap-1"><i className="far fa-clock"></i> {formatDateTime(t.endDate)}</div>
+                        </div>
+                     </div>
+                     <div className="flex flex-col items-end pl-2">
+                        {remainText && (
+                           <div className={`text-xs font-bold px-3 py-1.5 rounded-full mb-2 whitespace-nowrap flex items-center gap-1 shadow-sm border
+                              ${isExpired ? 'bg-gray-100 text-gray-500 border-gray-200' : showReminder ? 'bg-white text-red-600 border-red-100' : 'bg-slate-50 text-slate-600 border-slate-100'}`}>
+                              {showReminder && <i className="fas fa-bell text-yellow-500 animate-bell"></i>}
+                              {remainText}
+                           </div>
+                        )}
+                        {/* 提示左滑 */}
+                        <div className="text-[10px] text-slate-300"><i className="fas fa-chevron-left mr-1"></i>左滑結案</div>
+                     </div>
+                  </div>
               </div>
            </div>
         );
@@ -511,6 +550,13 @@
          } catch(e) { alert("儲存失敗"); } finally { setProcessing(false); }
       };
       
+      const handleCloseCase = async (taskId) => {
+         if(!confirm("確定結案此工作項目？(將會刪除)")) return;
+         try {
+            await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(taskId).delete();
+         } catch(e) { alert("操作失敗"); }
+      };
+      
       // -- Settings Actions --
       const addAuthor = async () => {
         if(!newAuthorName.trim()) return;
@@ -567,7 +613,6 @@
          reader.readAsBinaryString(file);
       };
       
-      // Save Sub Number
       const saveSubNumber = async () => {
         if (!editingSubNumId) return;
         try {
@@ -593,7 +638,6 @@
 
           {currentView === 'home' && <HomeView form={form} setForm={setForm} isManualNumber={isManualNumber} setIsManualNumber={setIsManualNumber} meta={meta} nextNumbers={nextNumbers} handleSubmit={handleSubmit} processing={processing} records={records} handleDelete={(id)=>db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete()} setFilter={setFilter} filter={filter} handleAuthorChange={handleAuthorChange} />}
 
-          {/* 公文系統完整版 */}
           {currentView === 'docs' && (
             <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-4 fade-in">
                <div className="flex bg-slate-200 p-1 rounded-xl">
@@ -650,7 +694,7 @@
                 </div>
                 <div className="space-y-3 pb-20">
                    {tasks.filter(t => (taskFilter==='全部'||t.priority===taskFilter) && t.title.includes(taskSearch)).sort((a,b)=>new Date(a.endDate)-new Date(b.endDate)).map(t => (
-                      <TaskItem key={t.id} t={t} onClick={(task)=>{setTaskForm({...task, reminderMinutes:task.reminderMinutes||"0", imageUrl:task.imageUrl||""}); setShowTaskModal(true);}} onDelete={(e, id)=>{e.stopPropagation(); if(confirm("刪除?")) db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).delete();}} />
+                      <TaskItem key={t.id} t={t} onClick={(task)=>{setTaskForm({...task, reminderMinutes:task.reminderMinutes||"0", imageUrl:task.imageUrl||""}); setShowTaskModal(true);}} onCloseCase={handleCloseCase} />
                    ))}
                 </div>
                 <button onClick={()=>{setTaskForm({id:null, title:"", type:"行政", delegator:"", priority:"一般", startDate:getCurrentDateTimeISO(), endDate:getCurrentDateTimeISO(), notes:"", imageUrl:"", reminderMinutes:"0"}); setShowTaskModal(true);}} className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl active:scale-90 transition z-20"><i className="fas fa-plus"></i></button>

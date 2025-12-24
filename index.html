@@ -4,9 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>業務管理系統 Pro</title>
-  <link rel="icon" href="./logo.jpg" />
-  <link rel="apple-touch-icon" href="./logo.jpg" />
-
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -19,33 +16,13 @@
 
   <style>
     * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
-    body { 
-      background-color: #f8fafc;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; 
-      padding-top: env(safe-area-inset-top);
-      padding-bottom: env(safe-area-inset-bottom);
-      overflow-x: hidden;
-    }
-    .no-scrollbar::-webkit-scrollbar { display: none; }
-    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    
-    .input-ios {
-      height: 48px; width: 100%; font-size: 16px; padding: 0 12px;
-      border-radius: 10px; border: 1px solid #e2e8f0; background-color: #fff;
-      appearance: none; transition: all 0.2s;
-    }
-    .input-ios:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1); outline: none; }
-    .select-wrapper { position: relative; }
-    .select-wrapper::after {
-      content: '\f078'; font-family: 'Font Awesome 6 Free'; font-weight: 900; font-size: 12px;
-      position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none;
-    }
-    
+    body { background-color: #f8fafc; font-family: -apple-system, sans-serif; padding-bottom: env(safe-area-inset-bottom); }
+    .input-ios { height: 48px; width: 100%; font-size: 16px; padding: 0 12px; border-radius: 10px; border: 1px solid #e2e8f0; background-color: #fff; appearance: none; }
+    .input-ios:focus { border-color: #3b82f6; outline: none; }
     .sidebar { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
     .sidebar-closed { transform: translateX(-100%); }
     .sidebar-open { transform: translateX(0); }
-    .fade-in { animation: fadeIn 0.4s ease-in-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .task-item { transition: transform 0.2s ease-out; }
     .bg-dot-pattern { background-image: radial-gradient(#cbd5e1 1px, transparent 1px); background-size: 20px 20px; }
   </style>
 </head>
@@ -53,29 +30,25 @@
   <div id="root"></div>
 
   <script type="text/babel" data-presets="env,react">
-    // --- Configuration ---
     const firebaseConfig = {
       apiKey: "AIzaSyAHLUkaGRW7j7ZHFaTEJMKNbkMzZm218w4",
       authDomain: "official-document-system-239ab.firebaseapp.com",
       projectId: "official-document-system-239ab",
       storageBucket: "official-document-system-239ab.firebasestorage.app",
       messagingSenderId: "285835980582",
-      appId: "1:285835980582:web:feb116841184884f685be7",
-      measurementId: "G-B9R46YLGXQ",
+      appId: "1:285835980582:web:feb116841184884f685be7"
     };
     const CURRENT_APP_ID = "dispatch-system-pro-v1";
-    
-    try { if (!firebase.apps.length) firebase.initializeApp(firebaseConfig); } catch (e) { console.error(e); }
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db = firebase.firestore();
-    const { useState, useEffect, useMemo, useRef, useCallback, memo } = React;
+    const { useState, useEffect, useMemo, useRef, memo } = React;
 
     // --- Utilities ---
     const formatDateNoYear = (dateStr) => {
        if(!dateStr) return "";
        const parts = dateStr.split('-');
-       if(parts.length < 3) return dateStr;
-       return `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`;
+       return parts.length < 3 ? dateStr : `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`;
     };
     const formatDateTime = (isoStr) => {
        if (!isoStr) return "";
@@ -87,130 +60,53 @@
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         return now.toISOString().slice(0, 16);
     };
-    const compressImage = (file, maxWidth = 1200) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = (e) => {
-                const img = new Image(); img.src = e.target.result;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    let w = img.width, h = img.height;
-                    if (w > maxWidth) { h = (maxWidth / w) * h; w = maxWidth; }
-                    canvas.width = w; canvas.height = h;
-                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                    resolve(canvas.toDataURL('image/jpeg', 0.8));
-                };
-            };
-            reader.onerror = reject;
-        });
-    };
 
     // --- Components ---
-
-    const Sidebar = memo(({ menuOpen, setMenuOpen, currentView, setCurrentView, user, handleExport, fileInputRef, handleLogout }) => (
-      <>
-        {menuOpen && <div className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm overlay fade-in" onClick={() => setMenuOpen(false)} />}
-        <div className={`fixed inset-y-0 left-0 w-[80%] max-w-[280px] bg-white shadow-2xl z-50 sidebar flex flex-col ${menuOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
-            <div className="bg-slate-900 text-white p-6 pt-12">
-               <h2 className="font-bold text-xl">功能選單</h2>
-               <div className="text-slate-400 text-xs mt-1 truncate">{user?.email}</div>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-               {[
-                 {id:'home', icon:'fa-pen-nib', label:'發文填寫'},
-                 {id:'docs', icon:'fa-folder-open', label:'公文系統'},
-                 {id:'tasks', icon:'fa-tasks', label:'工作管制'},
-                 {id:'personnel', icon:'fa-cogs', label:'系統設定'}
-               ].map(item => (
-                 <button key={item.id} onClick={()=>{setCurrentView(item.id);setMenuOpen(false)}} 
-                   className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 transition ${currentView===item.id ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}>
-                   <i className={`fas ${item.icon} w-6 text-center`}></i> {item.label}
-                 </button>
-               ))}
-               <div className="border-t border-slate-100 my-2"></div>
-               <button onClick={handleExport} className="w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 text-slate-600 hover:bg-slate-50">
-                  <i className="fas fa-file-export w-6 text-center"></i> 匯出 Excel
-               </button>
-            </div>
-            <div className="p-4 border-t border-slate-100">
-               <button onClick={handleLogout} className="w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 text-red-500 hover:bg-red-50 transition">
-                  <i className="fas fa-sign-out-alt w-6 text-center"></i> 登出
-               </button>
-            </div>
-        </div>
-      </>
-    ));
-
-    const LoginScreen = () => {
-      const [email, setEmail] = useState("");
-      const [password, setPassword] = useState("");
-      const handleAuth = async (e) => {
-        e.preventDefault();
-        try { await auth.signInWithEmailAndPassword(email, password); } 
-        catch (err) { alert(err.message); }
-      };
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-          <div className="bg-white w-full max-w-sm p-8 rounded-2xl shadow-xl fade-in text-center">
-             <h1 className="text-2xl font-bold text-slate-800 mb-8">業務管理系統</h1>
-             <form onSubmit={handleAuth} className="space-y-4">
-                <input type="email" required className="input-ios" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email" />
-                <input type="password" required className="input-ios" value={password} onChange={e=>setPassword(e.target.value)} placeholder="密碼" />
-                <button type="submit" className="w-full bg-slate-900 text-white h-12 rounded-xl font-bold">登入</button>
-             </form>
-          </div>
-        </div>
-      );
-    };
-
-    const RecordItem = memo(({ r, onSelect, onDelete }) => {
-       const copyToClipboard = (e) => {
-         e.stopPropagation();
-         const numSuffix = r.number ? r.number.slice(-3) : "000";
-         const text = `${formatDateNoYear(r.date)}${r.code}${numSuffix}號：${r.subject}`;
-         navigator.clipboard.writeText(text).then(() => alert("已複製！"));
-       };
-       return (
-         <div onClick={() => onSelect(r)} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm active:bg-slate-50 transition relative cursor-pointer">
-            <div className="flex justify-between items-start mb-1">
-               <span className="font-mono font-bold text-blue-600 text-lg">#{r.number}</span>
-               <div className="text-xs text-slate-400">{formatDateNoYear(r.date)}</div>
-            </div>
-            <div className="text-base font-bold text-slate-800 mb-2 line-clamp-1">{r.subject}</div>
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-                <span className="bg-slate-100 px-2 py-1 rounded">{r.author}</span>
-                {r.docType !== '一般公文' && <span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded">{r.docType} {r.subNumber}</span>}
-                <div className="ml-auto flex gap-2">
-                    <button onClick={copyToClipboard} className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded"><i className="fas fa-copy"></i></button>
-                    <button onClick={(e) => { e.stopPropagation(); onDelete(r.id); }} className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 rounded"><i className="fas fa-trash-alt"></i></button>
-                </div>
-            </div>
-         </div>
-       );
-    });
-
     const TaskItem = memo(({ t, onClick, onCloseCase, onDelete }) => {
+        const [translateX, setTranslateX] = useState(0);
+        const startX = useRef(0);
+        
+        const onTouchStart = (e) => { if(t.completed) return; startX.current = e.touches[0].clientX; };
+        const onTouchMove = (e) => {
+            if(t.completed) return;
+            const diff = e.touches[0].clientX - startX.current;
+            if (diff < 0 && diff > -100) setTranslateX(diff);
+        };
+        const onTouchEnd = () => {
+            if(t.completed) return;
+            if (translateX < -60) setTranslateX(-80); else setTranslateX(0);
+        };
+
         const latestLog = t.logs && t.logs.length > 0 ? t.logs[t.logs.length - 1] : null;
+
         return (
            <div className="relative rounded-2xl overflow-hidden mb-3">
               {!t.completed && (
                 <div className="absolute inset-0 bg-red-100 flex justify-end items-center pr-4 rounded-2xl">
-                    <button onClick={(e) => { e.stopPropagation(); onCloseCase(t.id); }} className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold shadow-sm h-[80%] flex flex-col items-center justify-center text-xs"><i className="fas fa-check-circle mb-1 text-lg"></i>結案</button>
+                    <button onClick={(e) => { e.stopPropagation(); onCloseCase(t.id); }} className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold shadow-sm h-[80%] flex flex-col items-center justify-center text-xs"><i className="fas fa-check-circle mb-1 text-lg"></i>辦結</button>
                 </div>
               )}
-              <div onClick={() => onClick(t)} className={`${t.completed ? "grayscale opacity-60" : "bg-white"} rounded-2xl p-4 shadow-sm border border-slate-100 relative z-10 active:scale-[0.99] transition-transform`}>
-                  <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${t.completed ? 'bg-slate-400' : 'bg-blue-500'}`}></div>
+              <div onClick={() => onClick(t)} 
+                 onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+                 style={{ transform: `translateX(${translateX}px)` }}
+                 className={`${t.completed ? "bg-slate-50 opacity-75" : "bg-white"} task-item rounded-2xl p-4 shadow-sm border border-slate-100 relative z-10 active:scale-[0.99]`}>
+                  <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${t.completed ? 'bg-slate-300' : 'bg-blue-500'}`}></div>
                   <div className="flex justify-between items-start pl-3">
                      <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                           <h3 className={`font-bold text-slate-800 text-lg line-clamp-1 ${t.completed?'line-through':''}`}>{t.title}</h3>
+                           <h3 className={`font-bold text-slate-800 text-lg line-clamp-1 ${t.completed?'line-through text-slate-400':''}`}>{t.title}</h3>
                            {t.imageUrl && <i className="fas fa-image text-slate-400"></i>}
                         </div>
                         <div className="text-xs text-slate-500 space-y-1">
-                           <div>委託人：{t.delegator} | {t.type}</div>
-                           {latestLog && <div className="text-slate-400 italic truncate max-w-[200px]">日誌：{latestLog.content}</div>}
-                           <div className="font-bold">{t.completed ? `結案於 ${formatDateTime(t.completedAt)}` : `期限：${formatDateTime(t.endDate)}`}</div>
+                           <div className="font-medium">委託人：{t.delegator} | {t.type}</div>
+                           {latestLog && <div className="text-slate-400 italic truncate max-w-[200px]">最新：{latestLog.content}</div>}
+                           <div className="font-bold flex items-center gap-1">
+                              {t.completed ? (
+                                <span className="text-emerald-600"><i className="fas fa-check-circle"></i> 已於 {formatDateTime(t.completedAt)} 辦結</span>
+                              ) : (
+                                <span className={new Date(t.endDate) < new Date() ? 'text-red-500' : 'text-slate-600'}><i className="far fa-clock"></i> 期限：{formatDateTime(t.endDate)}</span>
+                              )}
+                           </div>
                         </div>
                      </div>
                      {t.completed && <button onClick={(e) => { e.stopPropagation(); onDelete(e, t.id); }} className="text-slate-300 hover:text-red-500 p-2"><i className="fas fa-trash-alt"></i></button>}
@@ -222,9 +118,8 @@
 
     function App() {
       const [user, setUser] = useState(null);
-      const [loadingAuth, setLoadingAuth] = useState(true);
-      const [menuOpen, setMenuOpen] = useState(false);
       const [currentView, setCurrentView] = useState("home");
+      const [menuOpen, setMenuOpen] = useState(false);
       const [records, setRecords] = useState([]);
       const [tasks, setTasks] = useState([]);
       const [meta, setMeta] = useState({ authors: [], codes: [], authorDefaults: {}, taskTypes: ['行政', '訓練', '後勤', '人事', '其他'] });
@@ -236,22 +131,16 @@
       const [filter, setFilter] = useState({ type: 'all', value: '' });
 
       const [showTaskModal, setShowTaskModal] = useState(false);
-      const [taskForm, setTaskForm] = useState({ id: null, title: "", type: "行政", delegator: "", priority: "一般", startDate: getCurrentDateTimeISO(), endDate: getCurrentDateTimeISO(), logs: [], imageUrl: "", reminderMinutes: "0" });
+      const [taskForm, setTaskForm] = useState({ id: null, title: "", type: "行政", delegator: "", priority: "一般", startDate: getCurrentDateTimeISO(), endDate: getCurrentDateTimeISO(), logs: [], imageUrl: "" });
       const [newLogInput, setNewLogInput] = useState("");
+      const [taskTab, setTaskTab] = useState("active"); // active, completed
       const [previewImage, setPreviewImage] = useState(null);
-      const [taskSearch, setTaskSearch] = useState("");
-      
-      const [docTab, setDocTab] = useState("人勤令");
-      const [editingSubNumId, setEditingSubNumId] = useState(null);
-      const [editingSubNumVal, setEditingSubNumVal] = useState("");
 
-      const taskImageInputRef = useRef(null);
-
-      useEffect(() => auth.onAuthStateChanged(u => { setUser(u); setLoadingAuth(false); }), []);
+      useEffect(() => auth.onAuthStateChanged(u => setUser(u)), []);
       useEffect(() => {
         if (!user) return;
         const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-        const unsubRec = userRef.collection("records").orderBy("createdAt", "desc").limit(300).onSnapshot(s => setRecords(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+        const unsubRec = userRef.collection("records").orderBy("createdAt", "desc").limit(100).onSnapshot(s => setRecords(s.docs.map(d => ({ id: d.id, ...d.data() }))));
         const unsubTask = userRef.collection("tasks").orderBy("createdAt", "desc").onSnapshot(s => setTasks(s.docs.map(d => ({ id: d.id, ...d.data() }))));
         const unsubMeta = userRef.collection("metadata").doc("general").onSnapshot(doc => { if(doc.exists) setMeta(prev => ({...prev, ...doc.data()})); });
         return () => { unsubRec(); unsubTask(); unsubMeta(); };
@@ -260,27 +149,12 @@
       const nextNumbers = useMemo(() => {
         const today = new Date(); const prefix = String(today.getFullYear() - 1911);
         const mainNums = records.map(r => r.number).filter(n => n && String(n).startsWith(prefix)).map(n => parseInt(n, 10)).filter(n => !Number.isNaN(n));
-        const main = mainNums.length === 0 ? prefix + "0000001" : String(Math.max(...mainNums) + 1);
-        const getSub = (type, rank) => {
-          if (type === "一般公文") return "";
-          const relevant = records.filter(r => r.docType === type && r.rank === rank && r.subNumber);
-          const nums = relevant.map(r => parseInt(r.subNumber, 10)).filter(n => !Number.isNaN(n));
-          return nums.length === 0 ? "001" : String(Math.max(...nums) + 1).padStart(3, '0');
-        };
-        return { main, getSub };
+        return { main: mainNums.length === 0 ? prefix + "0000001" : String(Math.max(...mainNums) + 1) };
       }, [records]);
 
       useEffect(() => {
-        if (!form.id && !isManualNumber) {
-            setForm(prev => ({ ...prev, number: nextNumbers.main, subNumber: nextNumbers.getSub(form.docType, form.rank) }));
-        }
-      }, [records, form.docType, form.rank, form.id, isManualNumber, nextNumbers]);
-
-      const handleAuthorChange = (val) => {
-        let update = { author: val };
-        if (meta.authorDefaults?.[val]) update.code = meta.authorDefaults[val];
-        setForm(prev => ({ ...prev, ...update }));
-      };
+        if (!form.id && !isManualNumber) setForm(prev => ({ ...prev, number: nextNumbers.main }));
+      }, [nextNumbers, form.id, isManualNumber]);
 
       const handleSubmit = async (forceNew = false) => {
         if (!user || !form.author || !form.subject) return alert("資料不完整");
@@ -288,23 +162,12 @@
         try {
           const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
           const isNew = forceNew || !form.id;
-          const finalMain = (isNew && !isManualNumber) ? nextNumbers.main : form.number;
-          const payload = { ...form, number: finalMain, subNumber: form.subNumber||"", updatedAt: new Date().toISOString() };
-          delete payload.id;
+          const payload = { ...form, number: isNew && !isManualNumber ? nextNumbers.main : form.number, updatedAt: new Date().toISOString() };
+          const docId = form.id; delete payload.id;
           if (isNew) { payload.createdAt = new Date().toISOString(); await userRef.collection("records").add(payload); }
-          else await userRef.collection("records").doc(form.id).set(payload, { merge: true });
-          setForm(prev => ({ ...getInitialForm(), author: prev.author, code: prev.code }));
-          setIsManualNumber(false);
+          else await userRef.collection("records").doc(docId).set(payload, { merge: true });
+          setForm(getInitialForm()); setIsManualNumber(false);
         } catch (e) { alert(e.message); } finally { setProcessing(false); }
-      };
-
-      const addLogEntry = () => {
-         if(!newLogInput.trim()) return;
-         const now = new Date();
-         const logTime = `${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-         const newEntry = { time: logTime, content: newLogInput.trim(), id: Date.now() };
-         setTaskForm(prev => ({ ...prev, logs: [...(prev.logs||[]), newEntry] }));
-         setNewLogInput("");
       };
 
       const handleTaskSubmit = async () => {
@@ -320,113 +183,109 @@
          } catch(e) { alert("儲存失敗"); } finally { setProcessing(false); }
       };
 
-      const saveSubNumber = async () => {
-        if (!editingSubNumId) return;
-        try {
-           await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(editingSubNumId).update({ subNumber: editingSubNumVal });
-           setEditingSubNumId(null);
-        } catch(e) { alert("更新失敗"); }
-      };
-
-      if (loadingAuth) return <div className="h-screen flex items-center justify-center">載入中...</div>;
-      if (!user) return <LoginScreen />;
+      if (!user) return (
+        <div className="h-screen flex items-center justify-center p-4">
+          <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm text-center">
+            <h1 className="text-2xl font-bold mb-6">業務管理系統</h1>
+            <button onClick={async () => { try { await auth.signInAnonymously(); } catch(e) { alert(e.message); } }} className="w-full bg-slate-900 text-white h-12 rounded-xl font-bold">登入系統</button>
+          </div>
+        </div>
+      );
 
       return (
         <div className="min-h-screen flex flex-col bg-slate-50 pb-20 bg-dot-pattern">
-          <Sidebar menuOpen={menuOpen} setMenuOpen={setMenuOpen} currentView={currentView} setCurrentView={setCurrentView} user={user} handleExport={()=>{}} handleLogout={()=>auth.signOut()} />
-          
-          <header className="sticky top-0 z-30 bg-white shadow-sm px-4 h-14 flex items-center justify-between border-b border-slate-100">
-            <div className="flex items-center gap-4"><button onClick={() => setMenuOpen(true)} className="text-slate-700 text-xl"><i className="fas fa-bars"></i></button><h1 className="font-bold text-lg text-slate-800">{{home:'發文填寫',docs:'公文系統',tasks:'工作管制',personnel:'系統設定'}[currentView]}</h1></div>
+          {/* Sidebar */}
+          {menuOpen && <div className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm" onClick={() => setMenuOpen(false)} />}
+          <div className={`fixed inset-y-0 left-0 w-[280px] bg-white shadow-2xl z-50 sidebar flex flex-col ${menuOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
+            <div className="bg-slate-900 text-white p-8 pt-12"><h2 className="font-bold text-xl">功能選單</h2></div>
+            <div className="p-4 space-y-2">
+              {['home', 'docs', 'tasks', 'personnel'].map(id => (
+                <button key={id} onClick={()=>{setCurrentView(id); setMenuOpen(false)}} className={`w-full text-left px-4 py-3 rounded-xl font-bold ${currentView===id ? 'bg-blue-50 text-blue-600' : 'text-slate-600'}`}>
+                  {{home:'發文填寫',docs:'公文系統',tasks:'工作管制',personnel:'系統設定'}[id]}
+                </button>
+              ))}
+              <button onClick={()=>auth.signOut()} className="w-full text-left px-4 py-3 text-red-500 font-bold">登出系統</button>
+            </div>
+          </div>
+
+          <header className="sticky top-0 z-30 bg-white shadow-sm px-4 h-14 flex items-center gap-4">
+            <button onClick={() => setMenuOpen(true)} className="text-slate-700 text-xl"><i className="fas fa-bars"></i></button>
+            <h1 className="font-bold text-lg text-slate-800">{{home:'發文填寫',docs:'公文系統',tasks:'工作管制',personnel:'系統設定'}[currentView]}</h1>
           </header>
 
           {currentView === 'home' && (
             <main className="p-4 space-y-4 max-w-md mx-auto fade-in">
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-                 <div className="grid grid-cols-2 gap-3">
-                   <div className="space-y-1"><label className="text-xs font-bold text-slate-400">日期</label><input type="date" className="input-ios" value={form.date} onChange={e=>setForm({...form, date:e.target.value})} /></div>
-                   <div className="space-y-1"><label className="text-xs font-bold text-slate-400">發文者</label><input type="text" className="input-ios" list="authList" value={form.author} onChange={e=>handleAuthorChange(e.target.value)} placeholder="發文者" /><datalist id="authList">{meta.authors.map(a=><option key={a} value={a}/>)}</datalist></div>
-                 </div>
-                 <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1"><label className="text-xs font-bold text-slate-400">日期</label><input type="date" className="input-ios" value={form.date} onChange={e=>setForm({...form, date:e.target.value})} /></div>
+                  <div className="space-y-1"><label className="text-xs font-bold text-slate-400">發文者</label><input type="text" className="input-ios" list="authList" value={form.author} onChange={e=>setForm({...form, author:e.target.value})} placeholder="發文者" /><datalist id="authList">{meta.authors.map(a=><option key={a} value={a}/>)}</datalist></div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
                    <div className="space-y-1"><label className="text-xs font-bold text-slate-400">代字</label><input type="text" className="input-ios" value={form.code} onChange={e=>setForm({...form, code:e.target.value})} placeholder="代字" /></div>
-                   <div className="grid grid-cols-3 gap-2">
-                     <div className="col-span-2 space-y-1">
-                        <label className="text-xs font-bold text-slate-400">總號</label>
-                        <div className="relative"><input type="text" className="input-ios text-right" readOnly={!isManualNumber} value={form.number} onChange={e=>setForm({...form, number:e.target.value})} /><button onClick={()=>setIsManualNumber(!isManualNumber)} className="absolute left-2 top-3 text-slate-300"><i className={`fas fa-${isManualNumber?'unlock':'lock'}`}></i></button></div>
-                     </div>
-                     <div className="space-y-1"><label className="text-xs font-bold text-slate-400">分號</label><input type="text" className="input-ios text-center font-bold" value={form.subNumber} onChange={e=>setForm({...form, subNumber:e.target.value})} /></div>
-                   </div>
-                 </div>
-                 <div className="space-y-2">
-                    <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">
-                       {['一般公文','人勤令','人職令'].map(t => <button key={t} onClick={()=>setForm({...form, docType:t})} className={`flex-1 py-2 text-xs rounded-md font-bold ${form.docType===t?'bg-white shadow-sm text-blue-600':'text-slate-400'}`}>{t}</button>)}
-                    </div>
-                    {form.docType !== '一般公文' && (
-                      <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">
-                         {['軍官','士官','士兵'].map(r => <button key={r} onClick={()=>setForm({...form, rank:r})} className={`flex-1 py-2 text-xs rounded-md font-bold ${form.rank===r?'bg-indigo-600 text-white':'text-slate-400'}`}>{r}</button>)}
+                   <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-400">總號 {isManualNumber ? '(手動)' : '(自動)'}</label>
+                      <div className="relative">
+                        <input type="text" className={`input-ios text-right font-mono ${isManualNumber ? 'bg-white' : 'bg-slate-50'}`} readOnly={!isManualNumber} value={form.number} onChange={e=>setForm({...form, number:e.target.value})} />
+                        <button onClick={()=>setIsManualNumber(!isManualNumber)} className={`absolute left-2 top-3 ${isManualNumber ? 'text-blue-500' : 'text-slate-300'}`}><i className={`fas fa-${isManualNumber?'unlock':'lock'}`}></i></button>
                       </div>
-                    )}
-                 </div>
-                 <textarea className="w-full border rounded-xl p-3 h-24 outline-none focus:border-blue-500" placeholder="主旨內容..." value={form.subject} onChange={e=>setForm({...form, subject:e.target.value})}></textarea>
-                 <button onClick={()=>handleSubmit()} disabled={processing} className="w-full bg-slate-900 text-white h-12 rounded-xl font-bold shadow-lg">登錄發文</button>
+                   </div>
+                </div>
+                <textarea className="w-full border rounded-xl p-3 h-24 outline-none focus:border-blue-500" placeholder="主旨內容..." value={form.subject} onChange={e=>setForm({...form, subject:e.target.value})}></textarea>
+                
+                <div className="grid grid-cols-3 gap-2">
+                   <button onClick={()=>{const k=prompt("搜尋關鍵字"); if(k) setFilter({type:'search',value:k})}} className="bg-slate-100 text-slate-600 h-12 rounded-xl font-bold">查詢</button>
+                   <button onClick={()=>handleSubmit(false)} disabled={!form.id} className={`h-12 rounded-xl font-bold ${form.id ? 'bg-blue-100 text-blue-600' : 'bg-slate-50 text-slate-300'}`}>修改</button>
+                   <button onClick={()=>handleSubmit(true)} disabled={processing} className="bg-slate-900 text-white h-12 rounded-xl font-bold">登錄</button>
+                </div>
               </div>
               <div className="space-y-3">
-                 <h2 className="font-bold text-slate-800 text-lg px-2">最近紀錄</h2>
-                 {records.slice(0, 30).map(r => <RecordItem key={r.id} r={r} onSelect={setForm} onDelete={(id)=>db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete()} />)}
+                 <div className="flex justify-between items-center px-2">
+                   <h2 className="font-bold text-slate-800">近期紀錄</h2>
+                   {filter.type === 'search' && <button onClick={()=>setFilter({type:'all'})} className="text-xs text-blue-500 underline">清除搜尋</button>}
+                 </div>
+                 {records.filter(r => filter.type === 'all' || r.subject.includes(filter.value) || r.number.includes(filter.value)).map(r => <RecordItem key={r.id} r={r} onSelect={(item)=>{setForm(item); setIsManualNumber(true);}} onDelete={(id)=>confirm("刪除?") && db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete()} />)}
               </div>
-            </main>
-          )}
-
-          {currentView === 'docs' && (
-            <main className="p-4 space-y-4 max-w-md mx-auto fade-in">
-               <div className="flex bg-slate-200 p-1 rounded-xl">
-                  {['人勤令','人職令'].map(t => <button key={t} onClick={()=>setDocTab(t)} className={`flex-1 py-2 rounded-lg text-sm font-bold ${docTab===t?'bg-white text-blue-600 shadow-sm':'text-slate-500'}`}>{t}</button>)}
-               </div>
-               <div className="space-y-3">
-                  {records.filter(r => r.docType === docTab).length === 0 ? <div className="text-center text-slate-400 py-10">尚無資料</div> : records.filter(r => r.docType === docTab).map(r => (
-                    <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex justify-between">
-                       <div>
-                          <div className="text-[10px] text-slate-400">{formatDateNoYear(r.date)} | {r.author}</div>
-                          <h3 className="font-bold text-slate-800 my-1">{r.subject}</h3>
-                          <div className="text-xs text-slate-500">#{r.number} ({r.rank})</div>
-                       </div>
-                       <div className="text-right">
-                          <div className="text-[10px] text-slate-400">分號</div>
-                          {editingSubNumId === r.id ? (
-                             <div className="flex gap-1 items-center">
-                                <input type="text" className="w-12 border border-blue-500 rounded text-center" value={editingSubNumVal} onChange={e=>setEditingSubNumVal(e.target.value)} autoFocus />
-                                <button onClick={saveSubNumber} className="text-green-500"><i className="fas fa-check"></i></button>
-                             </div>
-                          ) : (
-                             <div className="text-2xl font-mono font-bold text-blue-900" onClick={()=>{setEditingSubNumId(r.id); setEditingSubNumVal(r.subNumber||"")}}>{r.subNumber}</div>
-                          )}
-                       </div>
-                    </div>
-                  ))}
-               </div>
             </main>
           )}
 
           {currentView === 'tasks' && (
              <main className="p-4 space-y-4 max-w-md mx-auto fade-in">
-                <div className="bg-white p-2 rounded-2xl flex items-center px-4 shadow-sm"><i className="fas fa-search text-slate-300 mr-2"></i><input type="text" className="flex-1 h-10 outline-none" placeholder="搜尋事項..." value={taskSearch} onChange={e=>setTaskSearch(e.target.value)} /></div>
-                <div className="space-y-3 pb-20">
-                   {tasks.filter(t=>t.title.includes(taskSearch)).map(t => <TaskItem key={t.id} t={t} onClick={(task)=>{setTaskForm({...task, logs:task.logs||[]}); setShowTaskModal(true);}} onCloseCase={(id)=>db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).update({completed:true, completedAt:new Date().toISOString()})} onDelete={(e,id)=>confirm("刪除?")&&db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).delete()} />)}
+                {/* Tabs for tidy layout */}
+                <div className="flex bg-slate-200 p-1 rounded-xl">
+                   <button onClick={()=>setTaskTab("active")} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${taskTab==='active' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>進行中 ({tasks.filter(t=>!t.completed).length})</button>
+                   <button onClick={()=>setTaskTab("completed")} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${taskTab==='completed' ? 'bg-white text-slate-600 shadow-sm' : 'text-slate-500'}`}>已辦結 ({tasks.filter(t=>t.completed).length})</button>
                 </div>
-                <button onClick={()=>{setTaskForm({id:null, title:"", type:"行政", delegator:"", priority:"一般", startDate:getCurrentDateTimeISO(), endDate:getCurrentDateTimeISO(), logs:[], imageUrl:"", reminderMinutes:"0"}); setShowTaskModal(true);}} className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl"><i className="fas fa-plus"></i></button>
+
+                <div className="space-y-3 pb-20">
+                   {tasks.filter(t => taskTab === 'active' ? !t.completed : t.completed).map(t => (
+                      <TaskItem key={t.id} t={t} 
+                        onClick={(task)=>{setTaskForm({...task, logs:task.logs||[]}); setShowTaskModal(true);}} 
+                        onCloseCase={(id)=>db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).update({completed:true, completedAt:new Date().toISOString()})} 
+                        onDelete={(e,id)=>confirm("刪除?")&&db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).delete()} />
+                   ))}
+                </div>
+                <button onClick={()=>{setTaskForm({id:null, title:"", type:"行政", delegator:"", priority:"一般", startDate:getCurrentDateTimeISO(), endDate:getCurrentDateTimeISO(), logs:[], imageUrl:""}); setShowTaskModal(true);}} className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl"><i className="fas fa-plus"></i></button>
              </main>
           )}
 
           {showTaskModal && (
              <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
                 <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={()=>setShowTaskModal(false)}></div>
-                <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 relative z-10 animate-fade-in flex flex-col max-h-[90vh]">
-                   <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">工作詳情</h2><button onClick={()=>setShowTaskModal(false)}><i className="fas fa-times"></i></button></div>
-                   <div className="space-y-4 overflow-y-auto flex-1 pb-4 no-scrollbar">
-                      <input className="input-ios bg-slate-50 font-bold" value={taskForm.title} onChange={e=>setTaskForm({...taskForm, title:e.target.value})} placeholder="任務名稱..." />
+                <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 relative z-10 flex flex-col max-h-[90vh] shadow-2xl">
+                   <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">事項編輯</h2><button onClick={()=>setShowTaskModal(false)}><i className="fas fa-times text-xl"></i></button></div>
+                   <div className="space-y-4 overflow-y-auto no-scrollbar flex-1 pb-4">
+                      <div className="space-y-1"><label className="text-xs font-bold text-slate-400">事項名稱</label><input className="input-ios bg-slate-50 font-bold" value={taskForm.title} onChange={e=>setTaskForm({...taskForm, title:e.target.value})} placeholder="請輸入任務標題..." /></div>
                       <div className="grid grid-cols-2 gap-3">
-                         <select className="input-ios bg-slate-50" value={taskForm.type} onChange={e=>setTaskForm({...taskForm, type:e.target.value})}>{meta.taskTypes.map(t=><option key={t} value={t}>{t}</option>)}</select>
-                         <input className="input-ios bg-slate-50" value={taskForm.delegator} onChange={e=>setTaskForm({...taskForm, delegator:e.target.value})} placeholder="委託人" />
+                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">種類</label><select className="input-ios bg-slate-50" value={taskForm.type} onChange={e=>setTaskForm({...taskForm, type:e.target.value})}>{meta.taskTypes.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
+                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">委託人</label><input className="input-ios bg-slate-50" value={taskForm.delegator} onChange={e=>setTaskForm({...taskForm, delegator:e.target.value})} placeholder="委託人" /></div>
                       </div>
+
+                      {/* Deadline Settings */}
+                      <div className="grid grid-cols-2 gap-3">
+                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">開始日期</label><input type="datetime-local" className="input-ios bg-slate-50 text-xs" value={taskForm.startDate} onChange={e=>setTaskForm({...taskForm, startDate:e.target.value})} /></div>
+                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">辦理期限</label><input type="datetime-local" className="input-ios bg-slate-50 text-xs" value={taskForm.endDate} onChange={e=>setTaskForm({...taskForm, endDate:e.target.value})} /></div>
+                      </div>
+
                       <div className="space-y-2">
                          <label className="text-xs font-bold text-slate-500"><i className="fas fa-history mr-1"></i> 辦理日誌</label>
                          <div className="bg-slate-50 rounded-xl p-3 border space-y-2 min-h-[60px]">
@@ -439,17 +298,18 @@
                             ))}
                          </div>
                          <div className="flex gap-2">
-                            <input className="input-ios bg-white flex-1 h-10 text-sm" value={newLogInput} onChange={e=>setNewLogInput(e.target.value)} placeholder="新增進度..." onKeyPress={e=>e.key==='Enter'&&addLogEntry()} />
-                            <button onClick={addLogEntry} className="bg-slate-800 text-white px-4 rounded-lg text-sm font-bold">送出</button>
+                            <input className="input-ios bg-white flex-1 h-10 text-sm" value={newLogInput} onChange={e=>setNewLogInput(e.target.value)} placeholder="新增進度..." onKeyPress={e=>e.key==='Enter' && (()=>{const now=new Date(); setTaskForm(p=>({...p, logs:[...(p.logs||[]), {id:Date.now(), time:`${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${now.getMinutes()}`, content:newLogInput}]})); setNewLogInput("");})()} />
+                            <button onClick={()=>{const now=new Date(); setTaskForm(p=>({...p, logs:[...(p.logs||[]), {id:Date.now(), time:`${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${now.getMinutes()}`, content:newLogInput}]})); setNewLogInput("");}} className="bg-slate-800 text-white px-4 rounded-lg text-sm font-bold">送出</button>
                          </div>
                       </div>
+
                       <div className="relative">
                          {taskForm.imageUrl && <div className="relative rounded-xl overflow-hidden mb-2 shadow-sm border border-slate-200"><img src={taskForm.imageUrl} onClick={() => setPreviewImage(taskForm.imageUrl)} className="w-full max-h-40 object-cover cursor-zoom-in" /><button onClick={()=>setTaskForm({...taskForm, imageUrl:""})} className="absolute top-2 right-2 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center"><i className="fas fa-times"></i></button></div>}
-                         <button onClick={()=>taskImageInputRef.current.click()} className="w-full h-12 rounded-xl border-2 border-dashed flex items-center justify-center gap-2 text-slate-400 bg-slate-50"><i className="fas fa-camera"></i> {taskForm.imageUrl ? "換圖" : "附件照片"}</button>
+                         <button onClick={()=>taskImageInputRef.current.click()} className="w-full h-12 rounded-xl border-2 border-dashed flex items-center justify-center gap-2 text-slate-400 bg-slate-50"><i className="fas fa-camera"></i> {taskForm.imageUrl ? "換圖" : "上傳附件照片"}</button>
                          <input type="file" ref={taskImageInputRef} className="hidden" accept="image/*" onChange={async(e)=>{ if(e.target.files[0]) setTaskForm({...taskForm, imageUrl: await compressImage(e.target.files[0])}) }} />
                       </div>
                    </div>
-                   <button onClick={handleTaskSubmit} className="w-full bg-slate-900 text-white font-bold h-12 rounded-xl mt-4">儲存工作</button>
+                   <button onClick={handleTaskSubmit} className="w-full bg-slate-900 text-white font-bold h-12 rounded-xl mt-4 shadow-lg active:scale-95">儲存事項資料</button>
                 </div>
              </div>
           )}

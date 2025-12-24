@@ -104,7 +104,7 @@
       if (diffHours > 0) return `剩 ${diffHours} 時 ${diffMins} 分`;
       return `剩 ${diffMins} 分`;
     };
-    const compressImage = (file, maxWidth = 800) => {
+    const compressImage = (file, maxWidth = 1200) => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.readAsDataURL(file);
@@ -116,7 +116,7 @@
                     if (w > maxWidth) { h = (maxWidth / w) * h; w = maxWidth; }
                     canvas.width = w; canvas.height = h;
                     canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                    resolve(canvas.toDataURL('image/jpeg', 0.7));
+                    resolve(canvas.toDataURL('image/jpeg', 0.8));
                 };
             };
             reader.onerror = reject;
@@ -174,7 +174,6 @@
 
       const handleAuth = async (e) => {
         e.preventDefault(); setError(""); setLoading(true);
-        console.log("嘗試登入/註冊...", email);
         try {
           if (!auth) throw new Error("Firebase Auth 未初始化");
           if (isRegister) {
@@ -188,7 +187,6 @@
           let msg = "錯誤：" + err.message;
           if(err.code === 'auth/wrong-password') msg = "密碼錯誤";
           else if(err.code === 'auth/user-not-found') msg = "找不到此帳號";
-          else if(err.code === 'auth/network-request-failed') msg = "網路連線失敗";
           setError(msg); alert(msg);
         } finally { setLoading(false); }
       };
@@ -248,26 +246,19 @@
        );
     });
 
-    // --- TaskItem with Swipe to Complete & Bell Logic ---
     const TaskItem = memo(({ t, onClick, onCloseCase, onDelete }) => {
         const remainText = getRemainingText(t.endDate);
         const priorityColor = t.priority === '急件' ? 'bg-red-500' : t.priority === '一般' ? 'bg-emerald-500' : 'bg-purple-500';
         const now = new Date(); const end = new Date(t.endDate);
         const diffMs = end - now;
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        
-        // Bell Logic: Show if <= 3 days and not expired and not completed
         const showReminder = !t.completed && diffMs > 0 && diffDays <= 3;
         const isExpired = diffMs < 0;
 
-        // Swipe Logic (Only for active tasks)
         const [translateX, setTranslateX] = useState(0);
         const startX = useRef(0);
         
-        const onTouchStart = (e) => { 
-           if(t.completed) return;
-           startX.current = e.touches[0].clientX; 
-        };
+        const onTouchStart = (e) => { if(t.completed) return; startX.current = e.touches[0].clientX; };
         const onTouchMove = (e) => {
             if(t.completed) return;
             const diff = e.touches[0].clientX - startX.current;
@@ -275,15 +266,13 @@
         };
         const onTouchEnd = () => {
             if(t.completed) return;
-            if (translateX < -60) setTranslateX(-80); // Snap open
-            else setTranslateX(0); // Snap close
+            if (translateX < -60) setTranslateX(-80); else setTranslateX(0);
         };
 
         const opacityClass = t.completed ? "grayscale opacity-60" : "bg-white";
 
         return (
            <div className="relative rounded-2xl overflow-hidden mb-3">
-              {/* Background Action Button (Complete) */}
               {!t.completed && (
                 <div className="absolute inset-0 bg-red-100 flex justify-end items-center pr-4 rounded-2xl">
                     <button onClick={(e) => { e.stopPropagation(); onCloseCase(t.id); }} 
@@ -293,11 +282,7 @@
                     </button>
                 </div>
               )}
-
-              {/* Foreground Content */}
-              <div 
-                 onClick={() => onClick(t)}
-                 onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+              <div onClick={() => onClick(t)} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
                  style={{ transform: `translateX(${translateX}px)`, transition: 'transform 0.2s ease-out' }}
                  className={`${opacityClass} rounded-2xl p-4 shadow-sm border border-slate-100 relative z-10 active:scale-[0.99]`}
               >
@@ -326,8 +311,6 @@
                            </div>
                         )}
                         {!t.completed && <div className="text-[10px] text-slate-300"><i className="fas fa-chevron-left mr-1"></i>左滑結案</div>}
-                        
-                        {/* 垃圾桶：已結案才顯示，或在編輯裡刪除 */}
                         {t.completed && (
                             <button onClick={(e) => { e.stopPropagation(); onDelete(e, t.id); }} className="text-slate-300 hover:text-red-500 p-2">
                                 <i className="fas fa-trash-alt"></i>
@@ -340,9 +323,7 @@
         );
     });
 
-    // --- Sub-View Components ---
-
-    const HomeView = ({ form, setForm, isManualNumber, setIsManualNumber, meta, nextNumbers, handleSubmit, processing, records, handleDelete, setFilter, filter, handleAuthorChange }) => {
+    const HomeView = ({ form, setForm, isManualNumber, setIsManualNumber, meta, handleSubmit, processing, records, handleDelete, setFilter, filter, handleAuthorChange }) => {
         const displayRecords = useMemo(() => {
             let res = [...records];
             if (filter.type === 'search') {
@@ -446,38 +427,31 @@
         );
     };
 
-    // --- Main App ---
     function App() {
-      // Global State
       const [user, setUser] = useState(null);
       const [loadingAuth, setLoadingAuth] = useState(true);
       const [menuOpen, setMenuOpen] = useState(false);
       const [currentView, setCurrentView] = useState("home");
-      
-      // Data State
       const [records, setRecords] = useState([]);
       const [tasks, setTasks] = useState([]);
       const [meta, setMeta] = useState({ authors: [], codes: [], authorDefaults: {}, taskTypes: [] });
       const [processing, setProcessing] = useState(false);
 
-      // Form States
       const getInitialForm = () => ({ id: null, date: new Date().toISOString().split("T")[0], author: "", code: "", number: "", subject: "", docType: "一般公文", rank: "軍官", subNumber: "" });
       const [form, setForm] = useState(getInitialForm());
       const [isManualNumber, setIsManualNumber] = useState(false);
       const [filter, setFilter] = useState({ type: 'all', value: '' });
 
-      // Task Form State
       const [showTaskModal, setShowTaskModal] = useState(false);
       const [taskForm, setTaskForm] = useState({ id: null, title: "", type: "行政", delegator: "", priority: "一般", startDate: getCurrentDateTimeISO(), endDate: getCurrentDateTimeISO(), notes: "", imageUrl: "", reminderMinutes: "0" });
       const [taskSearch, setTaskSearch] = useState("");
       const [taskFilter, setTaskFilter] = useState("全部");
+      const [previewImage, setPreviewImage] = useState(null);
       
-      // Docs View specific state
       const [docTab, setDocTab] = useState("人勤令");
       const [editingSubNumId, setEditingSubNumId] = useState(null);
       const [editingSubNumVal, setEditingSubNumVal] = useState("");
 
-      // Settings View specific state
       const [newAuthorName, setNewAuthorName] = useState("");
       const [newTaskType, setNewTaskType] = useState("");
       const [editingDefault, setEditingDefault] = useState(null);
@@ -485,10 +459,8 @@
       const fileInputRef = useRef(null);
       const taskImageInputRef = useRef(null);
 
-      // Auth Listener
       useEffect(() => auth.onAuthStateChanged(u => { setUser(u); setLoadingAuth(false); }), []);
 
-      // Data Listener
       useEffect(() => {
         if (!user) { setRecords([]); setTasks([]); return; }
         const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
@@ -499,11 +471,9 @@
             if(doc.exists) setMeta(prev => ({...prev, ...doc.data()}));
             else userRef.collection("metadata").doc("general").set({ authors: [], codes: [], authorDefaults: {}, taskTypes: ['行政', '訓練', '後勤', '人事', '保養', '其他'] });
         });
-
         return () => { unsubRec(); unsubTask(); unsubMeta(); };
       }, [user]);
 
-      // Logic: Auto Number
       const nextNumbers = useMemo(() => {
         const today = new Date(); const prefix = String(today.getFullYear() - 1911);
         const mainNums = records.map(r => r.number).filter(n => n && String(n).startsWith(prefix)).map(n => parseInt(n, 10)).filter(n => !Number.isNaN(n));
@@ -523,7 +493,6 @@
         }
       }, [records, form.docType, form.rank, form.id, isManualNumber, nextNumbers]);
 
-      // Actions
       const handleAuthorChange = (val) => {
         let update = { author: val };
         if (meta.authorDefaults && meta.authorDefaults[val]) update.code = meta.authorDefaults[val];
@@ -539,22 +508,18 @@
           const finalMain = (isNew && !isManualNumber) ? nextNumbers.main : form.number;
           const duplicate = records.find(r => r.number === finalMain && r.subNumber === (form.subNumber||"") && r.id !== (isNew?null:form.id));
           if (duplicate) throw new Error(`編號 ${finalMain} ${form.subNumber||""} 已存在`);
-
           const payload = { ...form, number: finalMain, subNumber: form.subNumber||"", updatedAt: new Date().toISOString() };
           delete payload.id;
           if (isNew) { payload.createdAt = new Date().toISOString(); await userRef.collection("records").add(payload); }
           else { await userRef.collection("records").doc(form.id).set(payload, { merge: true }); }
-          
           if (!meta.authors.includes(form.author) || !meta.codes.includes(form.code)) {
              await userRef.collection("metadata").doc("general").set({
                authors: firebase.firestore.FieldValue.arrayUnion(form.author),
                codes: firebase.firestore.FieldValue.arrayUnion(form.code)
              }, { merge: true });
           }
-
           setForm(prev => ({ ...getInitialForm(), date: prev.date, author: prev.author, code: prev.code }));
-          setIsManualNumber(false);
-          setFilter({type:'all',value:''});
+          setIsManualNumber(false); setFilter({type:'all',value:''});
         } catch (e) { alert(e.message); } finally { setProcessing(false); }
       };
 
@@ -572,12 +537,10 @@
       };
       
       const handleCloseCase = async (taskId) => {
-         // Modify: Close case instead of delete
          if(!confirm("確定結案？(案件將會移至列表底部)")) return;
          try {
             await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(taskId).update({
-                completed: true,
-                completedAt: new Date().toISOString()
+                completed: true, completedAt: new Date().toISOString()
             });
          } catch(e) { alert("操作失敗"); }
       };
@@ -589,17 +552,14 @@
          } catch(e) { alert("刪除失敗"); }
       };
       
-      // -- Settings Actions --
       const addAuthor = async () => {
         if(!newAuthorName.trim()) return;
-        await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general")
-            .update({ authors: firebase.firestore.FieldValue.arrayUnion(newAuthorName.trim()) });
+        await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({ authors: firebase.firestore.FieldValue.arrayUnion(newAuthorName.trim()) });
         setNewAuthorName("");
       };
       const addTaskType = async () => {
         if(!newTaskType.trim()) return;
-        await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general")
-            .update({ taskTypes: firebase.firestore.FieldValue.arrayUnion(newTaskType.trim()) });
+        await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({ taskTypes: firebase.firestore.FieldValue.arrayUnion(newTaskType.trim()) });
         setNewTaskType("");
       };
       const saveAuthorDefault = async (authorName, defaultCode) => {
@@ -611,16 +571,8 @@
       const handleExport = () => {
           if (records.length === 0 && tasks.length === 0) return alert("無資料");
           const wb = XLSX.utils.book_new();
-          // Sheet 1: Records
           if(records.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(records.map(r => ({ "總號":r.number, "日期":r.date, "發文者":r.author, "代字":r.code, "主旨":r.subject, "分號":r.subNumber, "種類":r.docType, "階級":r.rank }))), "公文紀錄");
-          // Sheet 2: Tasks (New: Include Status)
-          if(tasks.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tasks.map(t => ({ 
-              "標題":t.title, "業務種類":t.type, "委託人":t.delegator, "重要性":t.priority, 
-              "開始":t.startDate, "結束":t.endDate, "備註":t.notes, 
-              "狀態": t.completed ? "已結案" : "進行中",
-              "結案日期": t.completedAt || ""
-          }))), "工作管制");
-          
+          if(tasks.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(tasks.map(t => ({ "標題":t.title, "業務種類":t.type, "委託人":t.delegator, "重要性":t.priority, "開始":t.startDate, "結束":t.endDate, "備註":t.notes, "狀態": t.completed ? "已結案" : "進行中", "結案日期": t.completedAt || "" }))), "工作管制");
           XLSX.writeFile(wb, `備份_${new Date().toISOString().slice(0,10)}.xlsx`);
       };
       
@@ -633,45 +585,31 @@
             try {
                const wb = XLSX.read(evt.target.result, {type:'binary'});
                const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-               const batch = db.batch(); 
-               let count = 0;
-
-               // Import Records
+               const batch = db.batch(); let count = 0;
                const recSheet = wb.Sheets["公文紀錄"];
                if(recSheet){
                   const json = XLSX.utils.sheet_to_json(recSheet);
                   const recRef = userRef.collection("records");
                   for(let r of json){
                      if(r["總號"] && r["主旨"] && count < 250) { 
-                        const doc = recRef.doc();
-                        batch.set(doc, { number:String(r["總號"]), date:r["日期"], author:r["發文者"], code:r["代字"], subject:r["主旨"], subNumber:String(r["分號"]||""), docType:r["種類"]||"一般公文", rank:r["階級"]||"軍官", createdAt:new Date().toISOString() });
+                        batch.set(recRef.doc(), { number:String(r["總號"]), date:r["日期"], author:r["發文者"], code:r["代字"], subject:r["主旨"], subNumber:String(r["分號"]||""), docType:r["種類"]||"一般公文", rank:r["階級"]||"軍官", createdAt:new Date().toISOString() });
                         count++;
                      }
                   }
                }
-               
-               // Import Tasks
                const taskSheet = wb.Sheets["工作管制"];
                if(taskSheet){
                   const json = XLSX.utils.sheet_to_json(taskSheet);
                   const taskRef = userRef.collection("tasks");
                   for(let t of json){
                      if(t["標題"] && count < 450) {
-                        const doc = taskRef.doc();
                         const isCompleted = t["狀態"] === "已結案";
-                        batch.set(doc, {
-                            title: t["標題"], type: t["業務種類"]||"行政", delegator: t["委託人"]||"", priority: t["重要性"]||"一般",
-                            startDate: t["開始"]||new Date().toISOString(), endDate: t["結束"]||new Date().toISOString(), notes: t["備註"]||"",
-                            completed: isCompleted, completedAt: t["結案日期"] || (isCompleted ? new Date().toISOString() : null),
-                            createdAt: new Date().toISOString()
-                        });
+                        batch.set(taskRef.doc(), { title: t["標題"], type: t["業務種類"]||"行政", delegator: t["委託人"]||"", priority: t["重要性"]||"一般", startDate: t["開始"]||new Date().toISOString(), endDate: t["結束"]||new Date().toISOString(), notes: t["備註"]||"", completed: isCompleted, completedAt: t["結案日期"] || (isCompleted ? new Date().toISOString() : null), createdAt: new Date().toISOString() });
                         count++;
                      }
                   }
                }
-
-               await batch.commit();
-               alert(`成功匯入 ${count} 筆資料`); window.location.reload();
+               await batch.commit(); alert(`成功匯入 ${count} 筆資料`); window.location.reload();
             } catch(er) { console.error(er); alert("匯入錯誤"); } finally { setProcessing(false); e.target.value = null; }
          };
          reader.readAsBinaryString(file);
@@ -700,7 +638,7 @@
             {currentView === 'home' && <button onClick={()=>{setForm(getInitialForm());setFilter({type:'all',value:''});setIsManualNumber(false)}} className="text-slate-400 text-sm font-medium">重置</button>}
           </header>
 
-          {currentView === 'home' && <HomeView form={form} setForm={setForm} isManualNumber={isManualNumber} setIsManualNumber={setIsManualNumber} meta={meta} nextNumbers={nextNumbers} handleSubmit={handleSubmit} processing={processing} records={records} handleDelete={(id)=>db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete()} setFilter={setFilter} filter={filter} handleAuthorChange={handleAuthorChange} />}
+          {currentView === 'home' && <HomeView form={form} setForm={setForm} isManualNumber={isManualNumber} setIsManualNumber={setIsManualNumber} meta={meta} handleSubmit={handleSubmit} processing={processing} records={records} handleDelete={(id)=>db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete()} setFilter={setFilter} filter={filter} handleAuthorChange={handleAuthorChange} />}
 
           {currentView === 'docs' && (
             <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-4 fade-in">
@@ -710,8 +648,7 @@
                   ))}
                </div>
                <div className="space-y-3">
-                  {records.filter(r => r.docType === docTab).length === 0 ?
-                  <div className="text-center text-slate-400 py-10">尚無資料</div> : records.filter(r => r.docType === docTab).map(r => (
+                  {records.filter(r => r.docType === docTab).length === 0 ? <div className="text-center text-slate-400 py-10">尚無資料</div> : records.filter(r => r.docType === docTab).map(r => (
                     <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500">
                        <div className="flex justify-between items-start">
                           <div>
@@ -723,8 +660,7 @@
                              <div className="text-[10px] text-slate-400 mb-1">分號</div>
                              {editingSubNumId === r.id ? (
                                <div className="flex items-center gap-1">
-                                  <input type="text" className="w-16 border border-blue-500 rounded px-1 py-0.5 text-center font-mono text-lg" 
-                                     value={editingSubNumVal} onChange={e=>setEditingSubNumVal(e.target.value)} autoFocus />
+                                  <input type="text" className="w-16 border border-blue-500 rounded px-1 py-0.5 text-center font-mono text-lg" value={editingSubNumVal} onChange={e=>setEditingSubNumVal(e.target.value)} autoFocus />
                                   <div className="flex flex-col gap-1">
                                     <button onClick={saveSubNumber} className="w-6 h-6 bg-green-500 text-white rounded flex items-center justify-center"><i className="fas fa-check text-xs"></i></button>
                                     <button onClick={()=>setEditingSubNumId(null)} className="w-6 h-6 bg-gray-300 text-white rounded flex items-center justify-center"><i className="fas fa-times text-xs"></i></button>
@@ -746,34 +682,20 @@
           {currentView === 'tasks' && (
              <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-4 fade-in">
                 <div className="bg-white p-2 rounded-2xl shadow-sm space-y-2">
-                   <div className="relative">
-                      <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                      <input type="text" className="w-full bg-slate-100 rounded-xl pl-9 pr-4 py-2 text-sm outline-none" placeholder="搜尋..." value={taskSearch} onChange={e=>setTaskSearch(e.target.value)} />
-                   </div>
-                   <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                      {['全部', '急件', '一般', '交辦'].map(f => (
-                         <button key={f} onClick={()=>setTaskFilter(f)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition ${taskFilter===f ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500'}`}>{f}</button>
-                      ))}
-                   </div>
+                   <div className="relative"><i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i><input type="text" className="w-full bg-slate-100 rounded-xl pl-9 pr-4 py-2 text-sm outline-none" placeholder="搜尋..." value={taskSearch} onChange={e=>setTaskSearch(e.target.value)} /></div>
+                   <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">{['全部', '急件', '一般', '交辦'].map(f => <button key={f} onClick={()=>setTaskFilter(f)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition ${taskFilter===f ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500'}`}>{f}</button>)}</div>
                 </div>
                 <div className="space-y-3 pb-20">
-                   {tasks
-                     .filter(t => (taskFilter==='全部'||t.priority===taskFilter) && t.title.includes(taskSearch))
-                     .sort((a,b) => {
-                         // Sort logic: active first (by endDate asc), then completed (by completedAt desc)
+                   {tasks.filter(t => (taskFilter==='全部'||t.priority===taskFilter) && t.title.includes(taskSearch)).sort((a,b) => {
                          if(a.completed !== b.completed) return a.completed ? 1 : -1;
                          if(a.completed) return new Date(b.completedAt) - new Date(a.completedAt);
                          return new Date(a.endDate) - new Date(b.endDate);
-                     })
-                     .map(t => (
-                      <TaskItem key={t.id} t={t} onClick={(task)=>{setTaskForm({...task, reminderMinutes:task.reminderMinutes||"0", imageUrl:task.imageUrl||""}); setShowTaskModal(true);}} onCloseCase={handleCloseCase} onDelete={deleteTask} />
-                   ))}
+                     }).map(t => <TaskItem key={t.id} t={t} onClick={(task)=>{setTaskForm({...task, reminderMinutes:task.reminderMinutes||"0", imageUrl:task.imageUrl||""}); setShowTaskModal(true);}} onCloseCase={handleCloseCase} onDelete={deleteTask} />)}
                 </div>
                 <button onClick={()=>{setTaskForm({id:null, title:"", type:"行政", delegator:"", priority:"一般", startDate:getCurrentDateTimeISO(), endDate:getCurrentDateTimeISO(), notes:"", imageUrl:"", reminderMinutes:"0"}); setShowTaskModal(true);}} className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl active:scale-90 transition z-20"><i className="fas fa-plus"></i></button>
              </main>
           )}
 
-          {/* Modal for Tasks */}
           {showTaskModal && (
              <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
                 <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={()=>setShowTaskModal(false)}></div>
@@ -785,52 +707,43 @@
                          <div className="select-wrapper"><select className="input-ios bg-slate-50" value={taskForm.type} onChange={e=>setTaskForm({...taskForm, type:e.target.value})}>{meta.taskTypes.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
                          <input className="input-ios bg-slate-50" value={taskForm.delegator} onChange={e=>setTaskForm({...taskForm, delegator:e.target.value})} placeholder="委託人" />
                       </div>
-                      <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
-                         {['急件', '一般', '交辦'].map(p => <button key={p} onClick={()=>setTaskForm({...taskForm, priority:p})} className={`flex-1 py-2 text-xs rounded-lg font-bold ${taskForm.priority===p ? 'bg-white shadow-sm' : 'text-slate-400'}`}>{p}</button>)}
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                         <input type="datetime-local" className="input-ios bg-slate-50 text-xs" value={taskForm.startDate} onChange={e=>setTaskForm({...taskForm, startDate:e.target.value})} />
-                         <input type="datetime-local" className="input-ios bg-slate-50 text-xs" value={taskForm.endDate} onChange={e=>setTaskForm({...taskForm, endDate:e.target.value})} />
-                      </div>
+                      <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">{['急件', '一般', '交辦'].map(p => <button key={p} onClick={()=>setTaskForm({...taskForm, priority:p})} className={`flex-1 py-2 text-xs rounded-lg font-bold ${taskForm.priority===p ? 'bg-white shadow-sm' : 'text-slate-400'}`}>{p}</button>)}</div>
+                      <div className="grid grid-cols-2 gap-3"><input type="datetime-local" className="input-ios bg-slate-50 text-xs" value={taskForm.startDate} onChange={e=>setTaskForm({...taskForm, startDate:e.target.value})} /><input type="datetime-local" className="input-ios bg-slate-50 text-xs" value={taskForm.endDate} onChange={e=>setTaskForm({...taskForm, endDate:e.target.value})} /></div>
                       <div className="select-wrapper"><select className="input-ios bg-slate-50" value={taskForm.reminderMinutes} onChange={e=>setTaskForm({...taskForm, reminderMinutes:e.target.value})}><option value="0">不提醒</option><option value="30">30分前</option><option value="60">1小時前</option><option value="1440">1天前</option></select></div>
                       <div className="relative">
                          <textarea className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm h-24" placeholder="備註..." value={taskForm.notes} onChange={e=>setTaskForm({...taskForm, notes:e.target.value})}></textarea>
-                         <div className="absolute bottom-2 right-2"><button onClick={()=>taskImageInputRef.current.click()} className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center"><i className="fas fa-camera"></i></button></div>
+                         <div className="absolute bottom-2 right-2"><button onClick={()=>taskImageInputRef.current.click()} className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 shadow-sm border border-slate-300"><i className="fas fa-camera"></i></button></div>
                          <input type="file" ref={taskImageInputRef} className="hidden" accept="image/*" onChange={async(e)=>{ if(e.target.files[0]) setTaskForm({...taskForm, imageUrl: await compressImage(e.target.files[0])}) }} />
                       </div>
-                      {taskForm.imageUrl && <div className="relative"><img src={taskForm.imageUrl} className="w-full max-h-40 object-cover rounded-xl" /><button onClick={()=>setTaskForm({...taskForm, imageUrl:""})} className="absolute top-1 right-1 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center"><i className="fas fa-times"></i></button></div>}
+                      {taskForm.imageUrl && (
+                        <div className="relative group overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
+                           <img src={taskForm.imageUrl} onClick={() => setPreviewImage(taskForm.imageUrl)} className="w-full max-h-48 object-cover cursor-zoom-in hover:brightness-95 transition" />
+                           <div className="absolute top-2 right-2 flex gap-2">
+                             <button onClick={() => setPreviewImage(taskForm.imageUrl)} className="bg-black/40 text-white rounded-full w-8 h-8 flex items-center justify-center backdrop-blur-sm"><i className="fas fa-expand"></i></button>
+                             <button onClick={()=>setTaskForm({...taskForm, imageUrl:""})} className="bg-red-500/80 text-white rounded-full w-8 h-8 flex items-center justify-center backdrop-blur-sm"><i className="fas fa-trash-alt text-xs"></i></button>
+                           </div>
+                           <div className="absolute bottom-2 left-2 bg-black/30 text-white text-[10px] px-2 py-0.5 rounded-full backdrop-blur-sm">點擊圖片放大</div>
+                        </div>
+                      )}
                    </div>
-                   <button onClick={handleTaskSubmit} disabled={processing} className="w-full mt-4 bg-blue-600 text-white font-bold h-12 rounded-xl shadow-lg">{processing?"處理中...":"儲存"}</button>
+                   <button onClick={handleTaskSubmit} disabled={processing} className="w-full mt-6 bg-slate-900 text-white font-bold h-12 rounded-xl shadow-lg active:scale-95 transition">{processing?"處理中...":"儲存"}</button>
                 </div>
              </div>
           )}
           
-          {/* 系統設定完整版 */}
           {currentView === 'personnel' && (
              <main className="flex-1 w-full max-w-md mx-auto p-4 space-y-6 fade-in">
                  <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div className="p-4 border-b border-slate-100 bg-slate-50">
                        <h2 className="font-bold text-slate-700 mb-3">業務種類設定</h2>
-                       <div className="flex gap-2">
-                          <input type="text" value={newTaskType} onChange={e=>setNewTaskType(e.target.value)} placeholder="例如：裝備、伙食..." className="flex-1 px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500" />
-                          <button onClick={addTaskType} className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold shadow-sm active:scale-95">新增</button>
-                       </div>
+                       <div className="flex gap-2"><input type="text" value={newTaskType} onChange={e=>setNewTaskType(e.target.value)} placeholder="例如：裝備、伙食..." className="flex-1 px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500" /><button onClick={addTaskType} className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold shadow-sm active:scale-95">新增</button></div>
                     </div>
-                    <div className="p-4 flex flex-wrap gap-2">
-                       {meta.taskTypes.map(t => (
-                          <div key={t} className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm font-bold">
-                             {t} <button onClick={()=>confirm("刪除分類?")&&db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({taskTypes:firebase.firestore.FieldValue.arrayRemove(t)})} className="text-slate-400 hover:text-red-500 px-1"><i className="fas fa-times"></i></button>
-                          </div>
-                       ))}
-                    </div>
+                    <div className="p-4 flex flex-wrap gap-2">{meta.taskTypes.map(t => <div key={t} className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm font-bold">{t} <button onClick={()=>confirm("刪除分類?")&&db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({taskTypes:firebase.firestore.FieldValue.arrayRemove(t)})} className="text-slate-400 hover:text-red-500 px-1"><i className="fas fa-times"></i></button></div>)}</div>
                  </div>
                  <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div className="p-4 border-b border-slate-100 bg-slate-50">
                        <h2 className="font-bold text-slate-700 mb-3">人員設定</h2>
-                       <div className="flex gap-2">
-                          <input type="text" value={newAuthorName} onChange={e=>setNewAuthorName(e.target.value)} placeholder="輸入姓名..." className="flex-1 px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500" />
-                          <button onClick={addAuthor} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm active:scale-95">新增</button>
-                       </div>
+                       <div className="flex gap-2"><input type="text" value={newAuthorName} onChange={e=>setNewAuthorName(e.target.value)} placeholder="輸入姓名..." className="flex-1 px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-blue-500" /><button onClick={addAuthor} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow-sm active:scale-95">新增</button></div>
                     </div>
                     <div className="divide-y divide-slate-100">
                        {meta.authors.map(a => (
@@ -839,11 +752,7 @@
                                <div className="font-bold text-slate-800 text-lg">{a}</div>
                                <div className="text-xs text-slate-400 mt-1 flex items-center gap-1 cursor-pointer" onClick={()=>setEditingDefault(a)}>
                                   <i className="fas fa-link"></i>
-                                  {editingDefault === a ? (
-                                     <select className="bg-white border border-slate-300 rounded" value={meta.authorDefaults?.[a]||""} onChange={(e)=>saveAuthorDefault(a, e.target.value)} onBlur={()=>setEditingDefault(null)} autoFocus>
-                                        <option value="">無預設</option>{meta.codes.map(c=><option key={c} value={c}>{c}</option>)}
-                                     </select>
-                                  ) : ( <span>預設代字: {meta.authorDefaults?.[a] || "未設定"}</span> )}
+                                  {editingDefault === a ? <select className="bg-white border border-slate-300 rounded" value={meta.authorDefaults?.[a]||""} onChange={(e)=>saveAuthorDefault(a, e.target.value)} onBlur={()=>setEditingDefault(null)} autoFocus><option value="">無預設</option>{meta.codes.map(c=><option key={c} value={c}>{c}</option>)}</select> : <span>預設代字: {meta.authorDefaults?.[a] || "未設定"}</span>}
                                </div>
                             </div>
                             <button onClick={()=>confirm("刪除人員?")&&db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").update({authors:firebase.firestore.FieldValue.arrayRemove(a)})} className="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-red-500 rounded-full hover:bg-red-50"><i className="fas fa-trash-alt"></i></button>
@@ -855,6 +764,18 @@
              </main>
           )}
 
+          {/* 全螢幕圖片預覽器 */}
+          {previewImage && (
+             <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center animate-fade-in transition-all overflow-hidden" onClick={() => setPreviewImage(null)}>
+                <div className="absolute top-0 inset-x-0 p-6 flex justify-between items-center bg-gradient-to-b from-black/50 to-transparent pointer-events-none">
+                   <div className="text-white font-bold text-lg drop-shadow-md">圖片檢視</div>
+                   <button className="w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white backdrop-blur pointer-events-auto"><i className="fas fa-times text-xl"></i></button>
+                </div>
+                <img src={previewImage} className="max-w-full max-h-full object-contain animate-[scaleIn_0.2s_ease-out]" />
+                <div className="absolute bottom-10 text-white/50 text-xs px-4 py-2 rounded-full border border-white/20 backdrop-blur-sm pointer-events-none">點擊任意處關閉</div>
+             </div>
+          )}
+
         </div>
       );
     }
@@ -864,3 +785,4 @@
   </script>
 </body>
 </html>
+

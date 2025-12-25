@@ -247,6 +247,17 @@
         if (!form.id && !isManualNumber) setForm(prev => ({ ...prev, number: nextNumbers.main }));
       }, [nextNumbers, form.id, isManualNumber]);
 
+      // 修正：發文者連動代字邏輯
+      const handleAuthorChange = (val) => {
+        setForm(prev => {
+          const newForm = { ...prev, author: val };
+          if (meta.authorDefaults && meta.authorDefaults[val]) {
+            newForm.code = meta.authorDefaults[val];
+          }
+          return newForm;
+        });
+      };
+
       // 操作功能
       const handleDocSubmit = async (forceNew = false) => {
         if (!user || !form.author || !form.subject) return alert("資料不完整");
@@ -258,6 +269,12 @@
           const docId = form.id; delete payload.id;
           if (isNew) { payload.createdAt = new Date().toISOString(); await userRef.collection("records").add(payload); }
           else await userRef.collection("records").doc(docId).set(payload, { merge: true });
+          
+          // 更新代字庫 (如果不存在)
+          if(form.code && !meta.codes.includes(form.code)) {
+            await updateSettings({ codes: [...meta.codes, form.code] });
+          }
+
           setForm(getInitialForm()); setIsManualNumber(false); setFilter({type:'all',value:''});
         } catch (e) { alert(e.message); } finally { setProcessing(false); }
       };
@@ -286,6 +303,12 @@
       // 設定功能
       const updateSettings = async (newData) => {
          await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").set(newData, { merge: true });
+      };
+
+      const saveAuthorDefault = async (authorName, defaultCode) => {
+         const newDefaults = { ...(meta.authorDefaults || {}), [authorName]: defaultCode };
+         await updateSettings({ authorDefaults: newDefaults });
+         setEditingAuthorDefault(null);
       };
 
       // 側邊欄匯出匯入
@@ -347,7 +370,11 @@
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1"><label className="text-xs font-bold text-slate-400 ml-1">日期</label><input type="date" className="input-ios" value={form.date} onChange={e=>setForm({...form, date:e.target.value})} /></div>
-                  <div className="space-y-1"><label className="text-xs font-bold text-slate-400 ml-1">發文者</label><input type="text" className="input-ios" list="authList" value={form.author} onChange={e=>setForm({...form, author:e.target.value})} placeholder="選擇發文者" /><datalist id="authList">{meta.authors.map(a=><option key={a} value={a}/>)}</datalist></div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-400 ml-1">發文者</label>
+                    <input type="text" className="input-ios" list="authList" value={form.author} onChange={e=>handleAuthorChange(e.target.value)} placeholder="選擇發文者" />
+                    <datalist id="authList">{meta.authors.map(a=><option key={a} value={a}/>)}</datalist>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                    <div className="space-y-1"><label className="text-xs font-bold text-slate-400 ml-1">代字</label><input type="text" className="input-ios" value={form.code} onChange={e=>setForm({...form, code:e.target.value})} placeholder="代字" /></div>
@@ -420,16 +447,32 @@
           {currentView === 'personnel' && (
              <main className="p-4 space-y-6 max-w-md mx-auto fade-in">
                 <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
-                   <h2 className="font-bold text-slate-800 border-b pb-2">人員設定</h2>
+                   <h2 className="font-bold text-slate-800 border-b pb-2">人員及預設代字設定</h2>
                    <div className="flex gap-2">
                       <input className="input-ios h-10 flex-1" placeholder="輸入姓名..." value={newAuthor} onChange={e=>setNewAuthor(e.target.value)} />
                       <button className="bg-blue-600 text-white px-4 rounded-xl font-bold" onClick={async()=>{ if(!newAuthor)return; await updateSettings({ authors: [...meta.authors, newAuthor] }); setNewAuthor(""); }}>新增</button>
                    </div>
-                   <div className="space-y-2 max-h-40 overflow-y-auto no-scrollbar">
+                   <div className="space-y-2 max-h-60 overflow-y-auto no-scrollbar">
                       {meta.authors.map(a => (
-                         <div key={a} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg">
-                            <span className="font-medium">{a}</span>
-                            <button className="text-red-400" onClick={async()=>confirm("刪除?") && await updateSettings({ authors: meta.authors.filter(x=>x!==a) })}><i className="fas fa-trash-alt"></i></button>
+                         <div key={a} className="flex flex-col gap-1 p-2 bg-slate-50 rounded-lg">
+                            <div className="flex justify-between items-center">
+                              <span className="font-bold">{a}</span>
+                              <button className="text-red-400" onClick={async()=>confirm("刪除?") && await updateSettings({ authors: meta.authors.filter(x=>x!==a) })}><i className="fas fa-trash-alt"></i></button>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                               <span className="text-xs text-slate-400">預設代字:</span>
+                               {editingAuthorDefault === a ? (
+                                  <div className="flex flex-1 gap-1">
+                                    <input className="flex-1 h-7 border rounded px-2 text-xs" list="codeList" value={meta.authorDefaults?.[a] || ""} onChange={(e)=>saveAuthorDefault(a, e.target.value)} onBlur={()=>setTimeout(()=>setEditingAuthorDefault(null), 200)} autoFocus />
+                                    <datalist id="codeList">{meta.codes?.map(c=><option key={c} value={c}/>)}</datalist>
+                                  </div>
+                               ) : (
+                                  <div className="flex flex-1 justify-between items-center cursor-pointer" onClick={()=>setEditingAuthorDefault(a)}>
+                                     <span className="text-xs font-bold text-blue-600">{meta.authorDefaults?.[a] || "未設定"}</span>
+                                     <i className="fas fa-edit text-[10px] text-slate-300"></i>
+                                  </div>
+                               )}
+                            </div>
                          </div>
                       ))}
                    </div>
@@ -486,7 +529,7 @@
                          <input type="file" ref={taskImageInputRef} className="hidden" accept="image/*" onChange={async(e)=>{ if(e.target.files[0]) setTaskForm({...taskForm, imageUrl: await compressImage(e.target.files[0])}) }} />
                       </div>
                    </div>
-                   <button onClick={handleTaskSubmit} className="w-full bg-slate-900 text-white font-bold h-12 rounded-xl mt-4 shadow-lg active:scale-95">儲存工作事項</button>
+                   <button onClick={handleTaskSubmit} className="w-full bg-slate-900 text-white font-bold h-12 rounded-xl mt-4 shadow-lg active:scale-95">儲存任務</button>
                 </div>
              </div>
           )}

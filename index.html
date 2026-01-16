@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>業務管理系統 Pro</title>
+  <title>業務管理系統 Pro v1.1</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -19,6 +19,8 @@
     body { background-color: #f8fafc; font-family: -apple-system, sans-serif; padding-bottom: env(safe-area-inset-bottom); overflow-x: hidden; }
     .input-ios { height: 48px; width: 100%; font-size: 16px; padding: 0 12px; border-radius: 10px; border: 1px solid #e2e8f0; background-color: #fff; appearance: none; transition: border 0.2s; }
     .input-ios:focus { border-color: #3b82f6; outline: none; }
+    /* Select icon adjustment */
+    select.input-ios { background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23007CB2%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E"); background-repeat: no-repeat; background-position: right 0.7rem top 50%; background-size: 0.65rem auto; padding-right: 2rem; }
     .sidebar { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
     .sidebar-closed { transform: translateX(-100%); }
     .sidebar-open { transform: translateX(0); }
@@ -200,7 +202,10 @@
       const getInitialForm = () => ({ id: null, date: new Date().toISOString().split("T")[0], author: "", code: "", number: "", subject: "", docType: "一般公文", rank: "軍官", subNumber: "" });
       const [form, setForm] = useState(getInitialForm());
       const [isManualNumber, setIsManualNumber] = useState(false);
+      
+      // 排序與篩選
       const [filter, setFilter] = useState({ type: 'all', value: '' });
+      const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' }); // 預設依建立時間降冪
 
       // 工作管制表單
       const [showTaskModal, setShowTaskModal] = useState(false);
@@ -230,22 +235,36 @@
       useEffect(() => {
         if (!user) return;
         const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-        const unsubRec = userRef.collection("records").orderBy("createdAt", "desc").limit(100).onSnapshot(s => setRecords(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+        const unsubRec = userRef.collection("records").orderBy("createdAt", "desc").limit(200).onSnapshot(s => setRecords(s.docs.map(d => ({ id: d.id, ...d.data() }))));
         const unsubTask = userRef.collection("tasks").orderBy("createdAt", "desc").onSnapshot(s => setTasks(s.docs.map(d => ({ id: d.id, ...d.data() }))));
         const unsubMeta = userRef.collection("metadata").doc("general").onSnapshot(doc => { if(doc.exists) setMeta(prev => ({...prev, ...doc.data()})); });
         return () => { unsubRec(); unsubTask(); unsubMeta(); };
       }, [user]);
 
-      // 自動編號邏輯
+      // 自動編號邏輯 (總號)
       const nextNumbers = useMemo(() => {
         const today = new Date(); const prefix = String(today.getFullYear() - 1911);
         const mainNums = records.map(r => r.number).filter(n => n && String(n).startsWith(prefix)).map(n => parseInt(n, 10)).filter(n => !Number.isNaN(n));
         return { main: mainNums.length === 0 ? prefix + "0000001" : String(Math.max(...mainNums) + 1) };
       }, [records]);
 
+      // 初始化總號
       useEffect(() => {
         if (!form.id && !isManualNumber) setForm(prev => ({ ...prev, number: nextNumbers.main }));
       }, [nextNumbers, form.id, isManualNumber]);
+
+      // 自動分號計算 (當切換種類時)
+      useEffect(() => {
+        if (!form.id && form.docType !== '一般公文') {
+            const currentTypeRecords = records.filter(r => r.docType === form.docType);
+            const subNums = currentTypeRecords.map(r => parseInt(r.subNumber, 10)).filter(n => !isNaN(n));
+            const nextSub = subNums.length > 0 ? Math.max(...subNums) + 1 : 1;
+            setForm(prev => ({ ...prev, subNumber: String(nextSub) }));
+        } else if (!form.id && form.docType === '一般公文') {
+            setForm(prev => ({ ...prev, subNumber: "" }));
+        }
+      }, [form.docType, records, form.id]);
+
 
       // 修正：發文者連動代字邏輯
       const handleAuthorChange = (val) => {
@@ -258,9 +277,55 @@
         });
       };
 
+      // 排序邏輯
+      const sortedRecords = useMemo(() => {
+        let sortable = [...records];
+        
+        // 篩選
+        if(filter.type !== 'all') {
+            sortable = sortable.filter(r => r.subject.includes(filter.value) || r.number.includes(filter.value));
+        }
+
+        // 排序
+        sortable.sort((a, b) => {
+            let valA = a[sortConfig.key];
+            let valB = b[sortConfig.key];
+
+            // 特殊處理：數字型字串轉數字比較
+            if (sortConfig.key === 'number' || sortConfig.key === 'subNumber') {
+                valA = parseInt(valA || "0", 10);
+                valB = parseInt(valB || "0", 10);
+            }
+
+            if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+        return sortable;
+      }, [records, filter, sortConfig]);
+
+      const handleSort = (key) => {
+        setSortConfig(prev => ({
+            key,
+            direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
+        }));
+      };
+
+
       // 操作功能
       const handleDocSubmit = async (forceNew = false) => {
         if (!user || !form.author || !form.subject) return alert("資料不完整");
+        
+        // 檢查總號重複 (若是新增或修改總號時)
+        const isDuplicateMain = records.some(r => r.number === form.number && r.id !== form.id);
+        if (isDuplicateMain) return alert(`總號 ${form.number} 已存在，無法重複使用！`);
+
+        // 檢查分號重複 (若有分號)
+        if (form.docType !== '一般公文' && form.subNumber) {
+            const isDuplicateSub = records.some(r => r.docType === form.docType && r.subNumber === form.subNumber && r.id !== form.id);
+            if (isDuplicateSub) return alert(`${form.docType} 分號 ${form.subNumber} 已存在，無法重複使用！`);
+        }
+
         setProcessing(true);
         try {
           const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
@@ -274,8 +339,13 @@
           if(form.code && !meta.codes.includes(form.code)) {
             await updateSettings({ codes: [...meta.codes, form.code] });
           }
-
-          setForm(getInitialForm()); setIsManualNumber(false); setFilter({type:'all',value:''});
+          
+          // 重置表單，但保留日期 (修正日期跳回當天問題)
+          const currentSelectedDate = form.date;
+          setForm({ ...getInitialForm(), date: currentSelectedDate }); 
+          setIsManualNumber(false); 
+          setFilter({type:'all',value:''});
+          
         } catch (e) { alert(e.message); } finally { setProcessing(false); }
       };
 
@@ -372,8 +442,10 @@
                   <div className="space-y-1"><label className="text-xs font-bold text-slate-400 ml-1">日期</label><input type="date" className="input-ios" value={form.date} onChange={e=>setForm({...form, date:e.target.value})} /></div>
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-400 ml-1">發文者</label>
-                    <input type="text" className="input-ios" list="authList" value={form.author} onChange={e=>handleAuthorChange(e.target.value)} placeholder="選擇發文者" />
-                    <datalist id="authList">{meta.authors.map(a=><option key={a} value={a}/>)}</datalist>
+                    <select className="input-ios" value={form.author} onChange={e=>handleAuthorChange(e.target.value)}>
+                        <option value="" disabled>選擇發文者</option>
+                        {meta.authors.map(a => <option key={a} value={a}>{a}</option>)}
+                    </select>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -398,8 +470,17 @@
                 </div>
               </div>
               <div className="space-y-3">
-                 <div className="flex justify-between px-2"><h2 className="font-bold text-slate-800">近期紀錄</h2>{filter.type==='search' && <button onClick={()=>setFilter({type:'all'})} className="text-xs text-blue-500">清除</button>}</div>
-                 {records.filter(r => filter.type === 'all' || r.subject.includes(filter.value) || r.number.includes(filter.value)).map(r => <RecordItem key={r.id} r={r} onSelect={setForm} onDelete={(id)=>confirm("刪除?")&&db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete()} />)}
+                 <div className="flex justify-between items-center px-2">
+                    <h2 className="font-bold text-slate-800">近期紀錄</h2>
+                    <div className="flex gap-1 text-[10px] bg-slate-100 p-1 rounded-lg">
+                        <button onClick={()=>handleSort('date')} className={`px-2 py-1 rounded ${sortConfig.key==='date'?'bg-white shadow text-blue-600':''}`}>日期</button>
+                        <button onClick={()=>handleSort('number')} className={`px-2 py-1 rounded ${sortConfig.key==='number'?'bg-white shadow text-blue-600':''}`}>總號</button>
+                        <button onClick={()=>handleSort('subNumber')} className={`px-2 py-1 rounded ${sortConfig.key==='subNumber'?'bg-white shadow text-blue-600':''}`}>分號</button>
+                    </div>
+                 </div>
+                 {filter.type==='search' && <div className="px-2 text-xs flex justify-between"><span>搜尋: {filter.value}</span><button onClick={()=>setFilter({type:'all'})} className="text-blue-500">清除</button></div>}
+                 
+                 {sortedRecords.map(r => <RecordItem key={r.id} r={r} onSelect={setForm} onDelete={(id)=>confirm("刪除?")&&db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete()} />)}
               </div>
             </main>
           )}
@@ -549,4 +630,3 @@
   </script>
 </body>
 </html>
-

@@ -136,7 +136,7 @@
                <div className="text-base font-bold text-slate-800 mb-2 line-clamp-1">{r.subject}</div>
                <div className="flex items-center gap-2 text-xs text-slate-500">
                    <span className="bg-slate-100 px-2 py-1 rounded font-medium">{r.author}</span>
-                   {r.docType !== '一般公文' && <span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold">{r.docType} {r.subNumber}</span>}
+                   {r.docType !== '一般公文' && <span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold">{r.docType} {r.subNumber} ({r.rank})</span>}
                    {!isBatchMode && (
                        <div className="ml-auto flex gap-2">
                            <button onClick={copyToClipboard} className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded"><i className="fas fa-copy"></i></button>
@@ -276,16 +276,17 @@
         if (!form.id && !isManualNumber) setForm(prev => ({ ...prev, number: nextNumbers.main }));
       }, [nextNumbers, form.id, isManualNumber]);
 
+      // 自動分號計算 (增加判斷 rank)
       useEffect(() => {
         if (!form.id && form.docType !== '一般公文') {
-            const currentTypeRecords = records.filter(r => r.docType === form.docType);
+            const currentTypeRecords = records.filter(r => r.docType === form.docType && r.rank === form.rank);
             const subNums = currentTypeRecords.map(r => parseInt(r.subNumber, 10)).filter(n => !isNaN(n));
             const nextSub = subNums.length > 0 ? Math.max(...subNums) + 1 : 1;
             setForm(prev => ({ ...prev, subNumber: String(nextSub) }));
         } else if (!form.id && form.docType === '一般公文') {
             setForm(prev => ({ ...prev, subNumber: "" }));
         }
-      }, [form.docType, records, form.id]);
+      }, [form.docType, form.rank, records, form.id]);
 
       const handleAuthorChange = (val) => {
         setForm(prev => {
@@ -323,13 +324,32 @@
         }));
       };
 
+      // 公文系統獨立排序：先排階級再排分號
+      const sortedDocsRecords = useMemo(() => {
+          const rankOrder = { '軍官': 1, '士官': 2, '士兵': 3 };
+          let docs = records.filter(r => r.docType === docTab);
+          docs.sort((a, b) => {
+              const rA = rankOrder[a.rank] || 99;
+              const rB = rankOrder[b.rank] || 99;
+              if (rA !== rB) return rA - rB; // 階級小至大(軍官優先)
+              
+              const subA = parseInt(a.subNumber || "0", 10);
+              const subB = parseInt(b.subNumber || "0", 10);
+              return subB - subA; // 分號大至小
+          });
+          return docs;
+      }, [records, docTab]);
+
       const handleDocSubmit = async (forceNew = false) => {
         if (!user || !form.author || !form.subject) return alert("資料不完整");
+        
         const isDuplicateMain = records.some(r => r.number === form.number && r.id !== form.id);
         if (isDuplicateMain) return alert(`總號 ${form.number} 已存在，無法重複使用！`);
+        
+        // 檢查分號重複 (加入 rank 驗證)
         if (form.docType !== '一般公文' && form.subNumber) {
-            const isDuplicateSub = records.some(r => r.docType === form.docType && r.subNumber === form.subNumber && r.id !== form.id);
-            if (isDuplicateSub) return alert(`${form.docType} 分號 ${form.subNumber} 已存在，無法重複使用！`);
+            const isDuplicateSub = records.some(r => r.docType === form.docType && r.rank === form.rank && String(r.subNumber) === String(form.subNumber) && r.id !== form.id);
+            if (isDuplicateSub) return alert(`${form.docType} (${form.rank}) 分號 ${form.subNumber} 已存在，無法重複使用！`);
         }
 
         setProcessing(true);
@@ -543,7 +563,8 @@
                   {['人勤令','人職令'].map(t => <button key={t} onClick={()=>setDocTab(t)} className={`flex-1 py-2 rounded-lg text-sm font-bold ${docTab===t?'bg-white text-blue-600 shadow-sm':'text-slate-500'}`}>{t}</button>)}
                </div>
                <div className="space-y-3">
-                  {records.filter(r => r.docType === docTab).map(r => (
+                  {/* 改使用排序後的紀錄 */}
+                  {sortedDocsRecords.map(r => (
                     <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex justify-between items-center">
                        <div><div className="text-[10px] text-slate-400">{r.date?.replace(/-/g, '/')} | {r.author}</div><h3 className="font-bold text-slate-800 my-1">{r.subject}</h3><div className="text-xs text-slate-500">#{r.number} ({r.rank})</div></div>
                        <div className="text-right">

@@ -48,7 +48,6 @@
     const db = firebase.firestore();
     const { useState, useEffect, useMemo, useRef, memo } = React;
 
-    // --- 工具函式 ---
     const formatDateTime = (isoStr) => {
        if (!isoStr) return "";
        const date = new Date(isoStr);
@@ -78,7 +77,6 @@
         });
     };
 
-    // --- 元件 ---
     const LoginScreen = () => {
       const [isRegister, setIsRegister] = useState(false);
       const [email, setEmail] = useState("");
@@ -276,7 +274,6 @@
         if (!form.id && !isManualNumber) setForm(prev => ({ ...prev, number: nextNumbers.main }));
       }, [nextNumbers, form.id, isManualNumber]);
 
-      // 自動分號計算 (增加判斷 rank)
       useEffect(() => {
         if (!form.id && form.docType !== '一般公文') {
             const currentTypeRecords = records.filter(r => r.docType === form.docType && r.rank === form.rank);
@@ -324,18 +321,17 @@
         }));
       };
 
-      // 公文系統獨立排序：先排階級再排分號
       const sortedDocsRecords = useMemo(() => {
           const rankOrder = { '軍官': 1, '士官': 2, '士兵': 3 };
           let docs = records.filter(r => r.docType === docTab);
           docs.sort((a, b) => {
               const rA = rankOrder[a.rank] || 99;
               const rB = rankOrder[b.rank] || 99;
-              if (rA !== rB) return rA - rB; // 階級小至大(軍官優先)
+              if (rA !== rB) return rA - rB;
               
               const subA = parseInt(a.subNumber || "0", 10);
               const subB = parseInt(b.subNumber || "0", 10);
-              return subB - subA; // 分號大至小
+              return subB - subA;
           });
           return docs;
       }, [records, docTab]);
@@ -343,23 +339,68 @@
       const handleDocSubmit = async (forceNew = false) => {
         if (!user || !form.author || !form.subject) return alert("資料不完整");
         
-        const isDuplicateMain = records.some(r => r.number === form.number && r.id !== form.id);
-        if (isDuplicateMain) return alert(`總號 ${form.number} 已存在，無法重複使用！`);
-        
-        // 檢查分號重複 (加入 rank 驗證)
-        if (form.docType !== '一般公文' && form.subNumber) {
-            const isDuplicateSub = records.some(r => r.docType === form.docType && r.rank === form.rank && String(r.subNumber) === String(form.subNumber) && r.id !== form.id);
-            if (isDuplicateSub) return alert(`${form.docType} (${form.rank}) 分號 ${form.subNumber} 已存在，無法重複使用！`);
-        }
+        // 拆分多行主旨並過濾空白行
+        const subjects = form.subject.split('\n').map(s => s.trim()).filter(s => s);
+        if (subjects.length === 0) return alert("請輸入主旨");
 
         setProcessing(true);
         try {
           const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-          const isNew = forceNew || !form.id;
-          const payload = { ...form, number: isNew && !isManualNumber ? nextNumbers.main : form.number, updatedAt: new Date().toISOString() };
-          const docId = form.id; delete payload.id;
-          if (isNew) { payload.createdAt = new Date().toISOString(); await userRef.collection("records").add(payload); }
-          else await userRef.collection("records").doc(docId).set(payload, { merge: true });
+          
+          // 若為修改單筆資料
+          if (form.id && !forceNew && subjects.length === 1) {
+              const isDuplicateMain = records.some(r => r.number === form.number && r.id !== form.id);
+              if (isDuplicateMain) return alert(`總號 ${form.number} 已存在！`);
+              
+              if (form.docType !== '一般公文' && form.subNumber) {
+                  const isDuplicateSub = records.some(r => r.docType === form.docType && r.rank === form.rank && String(r.subNumber) === String(form.subNumber) && r.id !== form.id);
+                  if (isDuplicateSub) return alert(`${form.docType} (${form.rank}) 分號 ${form.subNumber} 已存在！`);
+              }
+
+              const payload = { ...form, subject: subjects[0], updatedAt: new Date().toISOString() };
+              const docId = form.id; delete payload.id;
+              await userRef.collection("records").doc(docId).set(payload, { merge: true });
+          } 
+          // 新增資料 (包含多行批次)
+          else {
+              let currentMainNum = parseInt(isManualNumber ? form.number : nextNumbers.main, 10);
+              let currentSubNum = form.docType !== '一般公文' && form.subNumber ? parseInt(form.subNumber, 10) : null;
+
+              for (let i = 0; i < subjects.length; i++) {
+                  const targetMainStr = String(currentMainNum);
+                  const targetSubStr = currentSubNum !== null ? String(currentSubNum) : "";
+
+                  // 檢查總號是否重複
+                  if (records.some(r => r.number === targetMainStr && r.id !== form.id)) {
+                      alert(`總號 ${targetMainStr} 已存在，批次建檔中斷於第 ${i+1} 筆！`);
+                      break;
+                  }
+                  
+                  // 檢查分號是否重複
+                  if (form.docType !== '一般公文' && targetSubStr) {
+                      if (records.some(r => r.docType === form.docType && r.rank === form.rank && String(r.subNumber) === targetSubStr && r.id !== form.id)) {
+                          alert(`${form.docType} (${form.rank}) 分號 ${targetSubStr} 已存在，批次建檔中斷於第 ${i+1} 筆！`);
+                          break;
+                      }
+                  }
+
+                  const payload = { 
+                      ...form, 
+                      subject: subjects[i],
+                      number: targetMainStr,
+                      subNumber: targetSubStr,
+                      createdAt: new Date().toISOString(),
+                      updatedAt: new Date().toISOString() 
+                  };
+                  delete payload.id; // 確保新增時不帶入前一筆的 id
+
+                  await userRef.collection("records").add(payload);
+
+                  // 遞增號碼供下一筆使用
+                  currentMainNum++;
+                  if (currentSubNum !== null) currentSubNum++;
+              }
+          }
           
           if(form.code && !meta.codes.includes(form.code)) {
             await updateSettings({ codes: [...meta.codes, form.code] });
@@ -414,10 +455,8 @@
       const handleExport = () => {
           try {
               const wb = XLSX.utils.book_new();
-              
               const exportRecords = records.length > 0 ?
                   records.map(r => ({ ...r })) : [{ "提示": "目前無發文紀錄" }];
-              
               const exportTasks = tasks.length > 0 ? 
                   tasks.map(t => {
                       const { imageUrl, logs, ...rest } = t;
@@ -508,7 +547,7 @@
                    <div className="space-y-1"><label className="text-xs font-bold text-slate-400 ml-1">種類</label><select className="input-ios" value={form.docType} onChange={e=>setForm({...form, docType:e.target.value})}>{['一般公文','人勤令','人職令'].map(t=><option key={t} value={t}>{t}</option>)}</select></div>
                    <div className="space-y-1"><label className="text-xs font-bold text-slate-400 ml-1">分號 / 階級</label><div className="flex gap-1"><input type="text" className="input-ios text-center font-bold" value={form.subNumber} onChange={e=>setForm({...form, subNumber:e.target.value})} placeholder="分號" />{form.docType !== '一般公文' && <select className="input-ios text-xs" value={form.rank} onChange={e=>setForm({...form, rank:e.target.value})}>{['軍官','士官','士兵'].map(r=><option key={r} value={r}>{r}</option>)}</select>}</div></div>
                 </div>
-                <textarea className="w-full border rounded-xl p-3 h-20 outline-none focus:border-blue-500" placeholder="主旨內容..." value={form.subject} onChange={e=>setForm({...form, subject:e.target.value})}></textarea>
+                <textarea className="w-full border rounded-xl p-3 h-20 outline-none focus:border-blue-500" placeholder="主旨內容... (可貼上多行，系統將自動依行數拆分建檔)" value={form.subject} onChange={e=>setForm({...form, subject:e.target.value})}></textarea>
                 <div className="grid grid-cols-3 gap-2 pt-2">
                    <button onClick={()=>{const k=prompt("關鍵字查詢"); if(k) setFilter({type:'search',value:k})}} className="bg-slate-100 text-slate-600 h-12 rounded-xl font-bold">查詢</button>
                    <button onClick={()=>handleDocSubmit(false)} disabled={!form.id} className={`h-12 rounded-xl font-bold ${form.id ? 'bg-blue-100 text-blue-600' : 'bg-slate-50 text-slate-300'}`}>修改</button>
@@ -563,7 +602,6 @@
                   {['人勤令','人職令'].map(t => <button key={t} onClick={()=>setDocTab(t)} className={`flex-1 py-2 rounded-lg text-sm font-bold ${docTab===t?'bg-white text-blue-600 shadow-sm':'text-slate-500'}`}>{t}</button>)}
                </div>
                <div className="space-y-3">
-                  {/* 改使用排序後的紀錄 */}
                   {sortedDocsRecords.map(r => (
                     <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex justify-between items-center">
                        <div><div className="text-[10px] text-slate-400">{r.date?.replace(/-/g, '/')} | {r.author}</div><h3 className="font-bold text-slate-800 my-1">{r.subject}</h3><div className="text-xs text-slate-500">#{r.number} ({r.rank})</div></div>

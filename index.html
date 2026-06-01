@@ -258,7 +258,7 @@
       useEffect(() => {
         if (!user) return;
         const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-        const unsubRec = userRef.collection("records").orderBy("createdAt", "desc").limit(200).onSnapshot(s => setRecords(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+        const unsubRec = userRef.collection("records").orderBy("createdAt", "desc").limit(2000).onSnapshot(s => setRecords(s.docs.map(d => ({ id: d.id, ...d.data() }))));
         const unsubTask = userRef.collection("tasks").orderBy("createdAt", "desc").onSnapshot(s => setTasks(s.docs.map(d => ({ id: d.id, ...d.data() }))));
         const unsubMeta = userRef.collection("metadata").doc("general").onSnapshot(doc => { if(doc.exists) setMeta(prev => ({...prev, ...doc.data()})); });
         return () => { unsubRec(); unsubTask(); unsubMeta(); };

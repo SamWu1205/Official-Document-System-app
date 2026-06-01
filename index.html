@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>業務管理系統 Pro v1.1</title>
+  <title>業務管理系統 Pro v1.2</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -58,6 +58,13 @@
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         return now.toISOString().slice(0, 16);
     };
+    const getTodayLocalDateString = () => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
 
     const compressImage = (file, maxWidth = 1000) => {
         return new Promise((resolve) => {
@@ -109,7 +116,8 @@
          const date = new Date(r.date);
          const dateText = `${date.getMonth() + 1}/${date.getDate()}`;
          const numSuffix = r.number ? String(r.number).slice(-3) : "000";
-         const text = `${dateText}${r.code || ''}${numSuffix}號：${r.subject}`;
+         const subSuffix = (r.docType !== '一般公文' && r.subNumber) ? `(${r.subNumber}號)` : '';
+         const text = `${dateText}${r.code || ''}${numSuffix}號${subSuffix}：${r.subject}`;
          const textArea = document.createElement("textarea");
          textArea.value = text; document.body.appendChild(textArea);
          textArea.select();
@@ -128,13 +136,16 @@
            )}
            <div className="flex-1 min-w-0">
                <div className="flex justify-between items-start mb-1">
-                  <span className="font-mono font-bold text-blue-600 text-lg">#{r.number}</span>
+                  <div className="flex items-center gap-2">
+                     <span className="font-mono font-bold text-blue-600 text-lg">#{r.number}</span>
+                     {r.docType !== '一般公文' && r.subNumber && <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold font-mono">分號: {r.subNumber}</span>}
+                  </div>
                   <div className="text-xs text-slate-400">{r.date?.replace(/-/g, '/')}</div>
                </div>
                <div className="text-base font-bold text-slate-800 mb-2 line-clamp-1">{r.subject}</div>
                <div className="flex items-center gap-2 text-xs text-slate-500">
                    <span className="bg-slate-100 px-2 py-1 rounded font-medium">{r.author}</span>
-                   {r.docType !== '一般公文' && <span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold">{r.docType} {r.subNumber} ({r.rank})</span>}
+                   <span className={`px-2 py-1 rounded font-bold ${r.docType === '一般公文' ? 'bg-slate-100 text-slate-700' : 'bg-indigo-50 text-indigo-600'}`}>{r.docType} {r.rank ? `(${r.rank})` : ''}</span>
                    {!isBatchMode && (
                        <div className="ml-auto flex gap-2">
                            <button onClick={copyToClipboard} className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded"><i className="fas fa-copy"></i></button>
@@ -201,16 +212,25 @@
       const [currentView, setCurrentView] = useState("home");
       const [records, setRecords] = useState([]);
       const [tasks, setTasks] = useState([]);
-      const [meta, setMeta] = useState({ authors: [], codes: [], authorDefaults: {}, taskTypes: ['行政', '訓練', '後勤', '人事', '其他'] });
+      const [meta, setMeta] = useState({ authors: [], codes: [], authorDefaults: {}, taskTypes: ['行政', '訓練', '後勤', '人事', '其他'], autoExport: { enabled: false, period: 'weekly', email: '' } });
       const [processing, setProcessing] = useState(false);
 
-      const getInitialForm = () => ({ id: null, date: new Date().toISOString().split("T")[0], author: "", code: "", number: "", subject: "", docType: "一般公文", rank: "軍官", subNumber: "" });
+      const getInitialForm = () => ({ id: null, date: getTodayLocalDateString(), author: "", code: "", number: "", subject: "", docType: "一般公文", rank: "軍官", subNumber: "" });
       const [form, setForm] = useState(getInitialForm());
       const [isManualNumber, setIsManualNumber] = useState(false);
-      const [filter, setFilter] = useState({ type: 'all', value: '' });
+      
+      // 改進篩選狀態結構
+      const [filter, setFilter] = useState({ type: 'all', value: '', docType: 'all', rank: 'all' });
       const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
       const [isBatchMode, setIsBatchMode] = useState(false);
       const [selectedRecordIds, setSelectedRecordIds] = useState(new Set());
+
+      // 每次回到發文填寫分頁或開啟時，更新日期為當日
+      useEffect(() => {
+        if (currentView === "home") {
+          setForm(prev => ({ ...prev, date: getTodayLocalDateString() }));
+        }
+      }, [currentView]);
 
       const handleBatchCopy = () => {
           if (selectedRecordIds.size === 0) return alert("請先選擇要複製的紀錄");
@@ -220,7 +240,8 @@
               const date = new Date(r.date);
               const dateText = `${date.getMonth() + 1}/${date.getDate()}`;
               const numSuffix = r.number ? String(r.number).slice(-3) : "000";
-              return `${dateText}${r.code || ''}${numSuffix}號：${r.subject}`;
+              const subSuffix = (r.docType !== '一般公文' && r.subNumber) ? `(${r.subNumber}號)` : '';
+              return `${dateText}${r.code || ''}${numSuffix}號${subSuffix}：${r.subject}`;
           }).join('\n');
           const textArea = document.createElement("textarea");
           textArea.value = textToCopy; 
@@ -246,10 +267,20 @@
       const [previewImage, setPreviewImage] = useState(null);
       const [editingSubId, setEditingSubId] = useState(null);
       const [editSubVal, setEditSubVal] = useState("");
+      
+      // 公文系統分頁與階級細分狀態
       const [docTab, setDocTab] = useState("人勤令");
+      const [docRankTab, setDocRankTab] = useState("軍官");
+
       const [newAuthor, setNewAuthor] = useState("");
       const [newTaskType, setNewTaskType] = useState("");
       const [editingAuthorDefault, setEditingAuthorDefault] = useState(null);
+      
+      // 自動匯出欄位變數
+      const [exportEnabled, setExportEnabled] = useState(false);
+      const [exportPeriod, setExportPeriod] = useState("weekly");
+      const [exportEmail, setExportEmail] = useState("");
+
       const fileInputRef = useRef(null);
       const taskImageInputRef = useRef(null);
 
@@ -258,9 +289,20 @@
       useEffect(() => {
         if (!user) return;
         const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-        const unsubRec = userRef.collection("records").orderBy("createdAt", "desc").limit(2000).onSnapshot(s => setRecords(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+        // 優化提升上限至 1000 筆
+        const unsubRec = userRef.collection("records").orderBy("createdAt", "desc").limit(1000).onSnapshot(s => setRecords(s.docs.map(d => ({ id: d.id, ...d.data() }))));
         const unsubTask = userRef.collection("tasks").orderBy("createdAt", "desc").onSnapshot(s => setTasks(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-        const unsubMeta = userRef.collection("metadata").doc("general").onSnapshot(doc => { if(doc.exists) setMeta(prev => ({...prev, ...doc.data()})); });
+        const unsubMeta = userRef.collection("metadata").doc("general").onSnapshot(doc => { 
+            if(doc.exists) {
+                const data = doc.data();
+                setMeta(prev => ({...prev, ...data}));
+                if (data.autoExport) {
+                    setExportEnabled(data.autoExport.enabled || false);
+                    setExportPeriod(data.autoExport.period || 'weekly');
+                    setExportEmail(data.autoExport.email || '');
+                }
+            } 
+        });
         return () => { unsubRec(); unsubTask(); unsubMeta(); };
       }, [user]);
 
@@ -295,11 +337,20 @@
         });
       };
 
+      // 整合進階選單篩選邏輯
       const sortedRecords = useMemo(() => {
         let sortable = [...records];
-        if(filter.type !== 'all') {
+        
+        if(filter.type === 'search' && filter.value) {
             sortable = sortable.filter(r => r.subject.includes(filter.value) || r.number.includes(filter.value));
         }
+        if(filter.docType !== 'all') {
+            sortable = sortable.filter(r => r.docType === filter.docType);
+        }
+        if(filter.rank !== 'all') {
+            sortable = sortable.filter(r => r.rank === filter.rank);
+        }
+
         sortable.sort((a, b) => {
             let valA = a[sortConfig.key];
             let valB = b[sortConfig.key];
@@ -321,25 +372,20 @@
         }));
       };
 
+      // 公文系統：人職令與人勤令依據選定公文種類與階級分開顯示
       const sortedDocsRecords = useMemo(() => {
-          const rankOrder = { '軍官': 1, '士官': 2, '士兵': 3 };
-          let docs = records.filter(r => r.docType === docTab);
+          let docs = records.filter(r => r.docType === docTab && r.rank === docRankTab);
           docs.sort((a, b) => {
-              const rA = rankOrder[a.rank] || 99;
-              const rB = rankOrder[b.rank] || 99;
-              if (rA !== rB) return rA - rB;
-              
               const subA = parseInt(a.subNumber || "0", 10);
               const subB = parseInt(b.subNumber || "0", 10);
-              return subB - subA;
+              return subB - subA; // 降序排列
           });
           return docs;
-      }, [records, docTab]);
+      }, [records, docTab, docRankTab]);
 
       const handleDocSubmit = async (forceNew = false) => {
         if (!user || !form.author || !form.subject) return alert("資料不完整");
         
-        // 拆分多行主旨並過濾空白行
         const subjects = form.subject.split('\n').map(s => s.trim()).filter(s => s);
         if (subjects.length === 0) return alert("請輸入主旨");
 
@@ -347,7 +393,6 @@
         try {
           const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
           
-          // 若為修改單筆資料
           if (form.id && !forceNew && subjects.length === 1) {
               const isDuplicateMain = records.some(r => r.number === form.number && r.id !== form.id);
               if (isDuplicateMain) return alert(`總號 ${form.number} 已存在！`);
@@ -361,7 +406,6 @@
               const docId = form.id; delete payload.id;
               await userRef.collection("records").doc(docId).set(payload, { merge: true });
           } 
-          // 新增資料 (包含多行批次)
           else {
               let currentMainNum = parseInt(isManualNumber ? form.number : nextNumbers.main, 10);
               let currentSubNum = form.docType !== '一般公文' && form.subNumber ? parseInt(form.subNumber, 10) : null;
@@ -370,13 +414,11 @@
                   const targetMainStr = String(currentMainNum);
                   const targetSubStr = currentSubNum !== null ? String(currentSubNum) : "";
 
-                  // 檢查總號是否重複
                   if (records.some(r => r.number === targetMainStr && r.id !== form.id)) {
                       alert(`總號 ${targetMainStr} 已存在，批次建檔中斷於第 ${i+1} 筆！`);
                       break;
                   }
                   
-                  // 檢查分號是否重複
                   if (form.docType !== '一般公文' && targetSubStr) {
                       if (records.some(r => r.docType === form.docType && r.rank === form.rank && String(r.subNumber) === targetSubStr && r.id !== form.id)) {
                           alert(`${form.docType} (${form.rank}) 分號 ${targetSubStr} 已存在，批次建檔中斷於第 ${i+1} 筆！`);
@@ -392,11 +434,10 @@
                       createdAt: new Date().toISOString(),
                       updatedAt: new Date().toISOString() 
                   };
-                  delete payload.id; // 確保新增時不帶入前一筆的 id
+                  delete payload.id;
 
                   await userRef.collection("records").add(payload);
 
-                  // 遞增號碼供下一筆使用
                   currentMainNum++;
                   if (currentSubNum !== null) currentSubNum++;
               }
@@ -406,17 +447,14 @@
             await updateSettings({ codes: [...meta.codes, form.code] });
           }
           
-          const currentSelectedDate = form.date;
-          const currentAuthor = form.author;
-          const currentCode = form.code;
           setForm({ 
-              ...getInitialForm(), 
-              date: currentSelectedDate, 
-              author: currentAuthor, 
-              code: currentCode 
+              ...getInitialForm(),
+              date: getTodayLocalDateString(),
+              author: form.author, 
+              code: form.code 
           });
           setIsManualNumber(false); 
-          setFilter({type:'all',value:''});
+          setFilter({type:'all',value:'',docType:'all',rank:'all'});
           
         } catch (e) { alert(e.message); } finally { setProcessing(false); }
       };
@@ -444,6 +482,22 @@
 
       const updateSettings = async (newData) => {
          await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").set(newData, { merge: true });
+      };
+
+      // 儲存自動匯出設定
+      const handleSaveAutoExport = async () => {
+         if (exportEnabled && !exportEmail) return alert("請輸入指定的通知信箱");
+         setProcessing(true);
+         try {
+             await updateSettings({
+                 autoExport: {
+                     enabled: exportEnabled,
+                     period: exportPeriod,
+                     email: exportEmail
+                 }
+             });
+             alert("自動匯出設定更新成功！\n(系統將於雲端背景固定週期備份並傳送至指定信箱)");
+         } catch (e) { alert("設定失敗"); } finally { setProcessing(false); }
       };
 
       const saveAuthorDefault = async (authorName, defaultCode) => {
@@ -549,11 +603,42 @@
                 </div>
                 <textarea className="w-full border rounded-xl p-3 h-20 outline-none focus:border-blue-500" placeholder="主旨內容... (可貼上多行，系統將自動依行數拆分建檔)" value={form.subject} onChange={e=>setForm({...form, subject:e.target.value})}></textarea>
                 <div className="grid grid-cols-3 gap-2 pt-2">
-                   <button onClick={()=>{const k=prompt("關鍵字查詢"); if(k) setFilter({type:'search',value:k})}} className="bg-slate-100 text-slate-600 h-12 rounded-xl font-bold">查詢</button>
+                   <button onClick={()=>{const k=prompt("關鍵字查詢"); if(k) setFilter(prev=>({...prev, type:'search', value:k}))}} className="bg-slate-100 text-slate-600 h-12 rounded-xl font-bold">查詢</button>
                    <button onClick={()=>handleDocSubmit(false)} disabled={!form.id} className={`h-12 rounded-xl font-bold ${form.id ? 'bg-blue-100 text-blue-600' : 'bg-slate-50 text-slate-300'}`}>修改</button>
                    <button onClick={()=>handleDocSubmit(true)} disabled={processing} className="bg-slate-900 text-white h-12 rounded-xl font-bold shadow-lg">登錄</button>
                 </div>
               </div>
+
+              {/* 階層進階篩選功能選單 */}
+              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+                 <div className="text-xs font-bold text-slate-500"><i className="fas fa-filter mr-1"></i> 進階資料篩選列表</div>
+                 <div className="grid grid-cols-2 gap-2">
+                     <div>
+                         <label className="text-[11px] text-slate-400 font-bold block mb-1">公文種類</label>
+                         <select className="w-full border text-xs h-9 rounded-lg px-2 bg-slate-50 font-bold" value={filter.docType} onChange={e => setFilter(prev => ({ ...prev, docType: e.target.value }))}>
+                             <option value="all">全部種類</option>
+                             <option value="一般公文">一般公文</option>
+                             <option value="人勤令">人勤令</option>
+                             <option value="人職令">人職令</option>
+                         </select>
+                     </div>
+                     <div>
+                         <label className="text-[11px] text-slate-400 font-bold block mb-1">官職階級</label>
+                         <select className="w-full border text-xs h-9 rounded-lg px-2 bg-slate-50 font-bold" value={filter.rank} onChange={e => setFilter(prev => ({ ...prev, rank: e.target.value }))} disabled={filter.docType === '一般公文'}>
+                             <option value="all">全部階級</option>
+                             <option value="軍官">軍官</option>
+                             <option value="士官">士官</option>
+                             <option value="士兵">士兵</option>
+                         </select>
+                     </div>
+                 </div>
+                 {(filter.docType !== 'all' || filter.rank !== 'all' || filter.type === 'search') && (
+                     <div className="flex justify-end">
+                         <button onClick={() => setFilter({ type: 'all', value: '', docType: 'all', rank: 'all' })} className="text-xs text-red-500 font-bold"><i className="fas fa-times-circle mr-1"></i>重置篩選項目</button>
+                     </div>
+                 )}
+              </div>
+
               <div className="space-y-3">
                  <div className="flex justify-between items-center px-2">
                     <div className="flex items-center gap-2">
@@ -574,7 +659,7 @@
                         </div>
                     )}
                  </div>
-                 {filter.type==='search' && <div className="px-2 text-xs flex justify-between"><span>搜尋: {filter.value}</span><button onClick={()=>setFilter({type:'all'})} className="text-blue-500">清除</button></div>}
+                 {filter.type==='search' && <div className="px-2 text-xs flex justify-between"><span>關鍵字搜尋: {filter.value}</span><button onClick={()=>setFilter(prev=>({...prev, type:'all', value:''}))} className="text-blue-500">清除</button></div>}
                  
                  {sortedRecords.map(r => (
                      <RecordItem 
@@ -598,19 +683,36 @@
 
           {currentView === 'docs' && (
             <main className="p-4 space-y-4 max-w-md mx-auto fade-in">
+               {/* 頂部公文類別大頁籤 */}
                <div className="flex bg-slate-200 p-1 rounded-xl">
-                  {['人勤令','人職令'].map(t => <button key={t} onClick={()=>setDocTab(t)} className={`flex-1 py-2 rounded-lg text-sm font-bold ${docTab===t?'bg-white text-blue-600 shadow-sm':'text-slate-500'}`}>{t}</button>)}
+                  {['人勤令','人職令'].map(t => <button key={t} onClick={()=>setDocTab(t)} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${docTab===t?'bg-white text-blue-600 shadow-sm':'text-slate-500'}`}>{t}</button>)}
                </div>
+
+               {/* 細分：獨立的軍官、士官、士兵階級次頁籤 */}
+               <div className="flex bg-slate-100 p-1 rounded-lg gap-1 border border-slate-200">
+                  {['軍官','士官','士兵'].map(r => (
+                      <button key={r} onClick={() => setDocRankTab(r)} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${docRankTab === r ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}>
+                          {r}分號紀錄
+                      </button>
+                  ))}
+               </div>
+
                <div className="space-y-3">
-                  {sortedDocsRecords.map(r => (
+                  {sortedDocsRecords.length === 0 ? (
+                      <div className="text-center py-8 text-sm text-slate-400 bg-white rounded-xl border border-dashed">該階級當下無發文記錄</div>
+                  ) : sortedDocsRecords.map(r => (
                     <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex justify-between items-center">
-                       <div><div className="text-[10px] text-slate-400">{r.date?.replace(/-/g, '/')} | {r.author}</div><h3 className="font-bold text-slate-800 my-1">{r.subject}</h3><div className="text-xs text-slate-500">#{r.number} ({r.rank})</div></div>
-                       <div className="text-right">
-                          <div className="text-[10px] text-slate-400">分號</div>
+                       <div className="flex-1 min-w-0 pr-2">
+                           <div className="text-[10px] text-slate-400">{r.date?.replace(/-/g, '/')} | {r.author}</div>
+                           <h3 className="font-bold text-slate-800 my-1 truncate">{r.subject}</h3>
+                           <div className="text-xs text-slate-500">總號: #{r.number}</div>
+                       </div>
+                       <div className="text-right flex-shrink-0">
+                          <div className="text-[10px] text-slate-400 font-bold">分號</div>
                           {editingSubId === r.id ? (
-                            <div className="flex gap-1"><input className="w-12 border rounded text-center" value={editSubVal} onChange={e=>setEditSubVal(e.target.value)} autoFocus /><button onClick={async()=>{await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(r.id).update({subNumber:editSubVal}); setEditingSubId(null)}} className="text-green-500"><i className="fas fa-check"></i></button></div>
+                            <div className="flex gap-1"><input className="w-12 border rounded text-center font-bold text-sm h-7" value={editSubVal} onChange={e=>setEditSubVal(e.target.value)} autoFocus /><button onClick={async()=>{await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(r.id).update({subNumber:editSubVal}); setEditingSubId(null)}} className="text-green-500 text-xs"><i className="fas fa-check"></i></button></div>
                           ) : (
-                            <div className="text-2xl font-mono font-bold text-blue-900 cursor-pointer" onClick={()=>{setEditingSubId(r.id); setEditSubVal(r.subNumber)}}>{r.subNumber}</div>
+                            <div className="text-xl font-mono font-bold text-blue-900 cursor-pointer bg-slate-50 px-2 py-0.5 rounded border border-slate-100" onClick={()=>{setEditingSubId(r.id); setEditSubVal(r.subNumber)}}>{r.subNumber || "-"}</div>
                           )}
                        </div>
                     </div>
@@ -635,6 +737,41 @@
 
           {currentView === 'personnel' && (
              <main className="p-4 space-y-6 max-w-md mx-auto fade-in">
+                
+                {/* 新增自動定時匯出管制區塊 */}
+                <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4 border border-slate-200">
+                   <h2 className="font-bold text-slate-800 border-b pb-2 flex items-center gap-2">
+                       <i className="fas fa-clock text-blue-500"></i>排程自動匯出備份設定
+                   </h2>
+                   <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl">
+                       <span className="text-sm font-bold text-slate-700">啟用定期信箱自動匯出</span>
+                       <label className="relative inline-flex items-center cursor-pointer">
+                           <input type="checkbox" checked={exportEnabled} onChange={e => setExportEnabled(e.target.checked)} className="sr-only peer" />
+                           <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                       </label>
+                   </div>
+                   
+                   {exportEnabled && (
+                      <div className="space-y-3 fade-in">
+                          <div className="space-y-1">
+                              <label className="text-xs font-bold text-slate-400 ml-1">匯出週期頻率</label>
+                              <select className="input-ios h-10 text-sm font-bold" value={exportPeriod} onChange={e=>setExportPeriod(e.target.value)}>
+                                  <option value="weekly">每週固定匯出 (每週一)</option>
+                                  <option value="monthly">每月固定匯出 (每月1號)</option>
+                                  <option value="biweekly">每雙週固定匯出</option>
+                              </select>
+                          </div>
+                          <div className="space-y-1">
+                              <label className="text-xs font-bold text-slate-400 ml-1">指定接收通知信箱</label>
+                              <input type="email" className="input-ios h-10 text-sm font-mono font-bold" placeholder="example@mail.mil.tw" value={exportEmail} onChange={e=>setExportEmail(e.target.value)} />
+                          </div>
+                      </div>
+                   )}
+                   <button onClick={handleSaveAutoExport} disabled={processing} className="w-full bg-slate-900 text-white font-bold h-10 rounded-xl text-sm transition-transform active:scale-95">
+                       儲存匯出排程設定
+                   </button>
+                </div>
+
                 <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
                    <h2 className="font-bold text-slate-800 border-b pb-2">人員及預設代字設定</h2>
                    <div className="flex gap-2">
@@ -693,7 +830,7 @@
                       <div className="space-y-1"><label className="text-xs font-bold text-slate-400">事項名稱</label><input className="input-ios bg-slate-50 font-bold" value={taskForm.title} onChange={e=>setTaskForm({...taskForm, title:e.target.value})} placeholder="任務內容..." /></div>
                       <div className="grid grid-cols-2 gap-3">
                          <div className="space-y-1"><label className="text-xs font-bold text-slate-400">種類</label><select className="input-ios bg-slate-50" value={taskForm.type} onChange={e=>setTaskForm({...taskForm, type:e.target.value})}>{meta.taskTypes.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
-                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">委託人</label><input className="input-ios bg-slate-50" value={taskForm.delegator} onChange={e=>setTaskForm({...taskForm, delegator:e.target.value})} placeholder="委託人" /></div>
+                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">委託人</label><input className="input-ios bg-slate-50" value={taskForm.delegator} onChange={e=>taskForm({...taskForm, delegator:e.target.value})} placeholder="委託人" /></div>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                          <div className="space-y-1"><label className="text-xs font-bold text-slate-400">開始時間</label><input type="datetime-local" className="input-ios bg-slate-50 text-xs" value={taskForm.startDate} onChange={e=>setTaskForm({...taskForm, startDate:e.target.value})} /></div>

@@ -177,76 +177,100 @@
 
     const TaskItem = memo(({ t, onClick, onCloseCase, onDelete }) => {
         const [translateX, setTranslateX] = useState(0);
+        const [isMoving, setIsMoving] = useState(false);
         const startX = useRef(0);
+        const currentX = useRef(0);
         const latestLog = t.logs && t.logs.length > 0 ? t.logs[t.logs.length - 1] : null;
         const isOverdue = !t.completed && new Date(t.endDate) < new Date();
 
-        // 雙向滑動偵測手裝
-        const onTouchStart = (e) => { startX.current = e.touches[0].clientX; };
+        // 雙向手勢觸發
+        const onTouchStart = (e) => {
+            setIsMoving(true);
+            startX.current = e.touches[0].clientX - currentX.current;
+        };
+        
         const onTouchMove = (e) => {
             const diff = e.touches[0].clientX - startX.current;
-            // 限制最大滑動拉伸幅度
-            if (diff < 100 && diff > -100) {
+            // 限制最大側滑極限範圍值，維持好操作特性
+            if (diff < 110 && diff > -110) {
+                // 如果已完成案件，限制其不允許右滑彈出辦結
+                if(t.completed && diff > 0) return;
                 setTranslateX(diff);
+                currentX.current = diff;
             }
         };
+        
         const onTouchEnd = () => {
-            if (translateX < -50) {
-                // 左滑大於閾值，定位至顯示右側刪除鍵
-                setTranslateX(-80);
-            } else if (translateX > 50 && !t.completed) {
-                // 右滑大於閾值（且未辦結），定位至顯示左側辦結鍵
-                setTranslateX(80);
+            setIsMoving(false);
+            if (currentX.current < -45) {
+                // 確定滑開左側 (彈出右邊刪除鍵)
+                setTranslateX(-85);
+                currentX.current = -85;
+            } else if (currentX.current > 45 && !t.completed) {
+                // 確定滑開右側 (彈出左邊辦結鍵)
+                setTranslateX(85);
+                currentX.current = 85;
             } else {
-                // 回彈
+                // 未過安全邊界值，一律強制回彈置中歸零
                 setTranslateX(0);
+                currentX.current = 0;
             }
+        };
+
+        // 處置完畢後重置置中
+        const resetItem = () => {
+            setTranslateX(0);
+            currentX.current = 0;
         };
 
         return (
-           <div className="relative rounded-2xl overflow-hidden mb-3 bg-slate-100">
-              {/* 右滑顯示：左側綠色辦結按鈕 */}
+           <div className="relative rounded-2xl overflow-hidden mb-3 bg-slate-100 h-[88px]">
+              
+              {/* 底層左邊：右滑彈出的辦結操作區 */}
               {!t.completed && (
-                <div className="absolute inset-y-0 left-0 bg-emerald-500 flex items-center pl-5 rounded-2xl z-0 w-full">
-                    <button onClick={(e) => { e.stopPropagation(); setTranslateX(0); onCloseCase(t.id); }} className="text-white font-bold text-xs flex flex-col items-center justify-center"><i className="fas fa-check-circle mb-1 text-lg"></i>辦結</button>
+                <div className="absolute inset-y-0 left-0 bg-emerald-500 flex items-center pl-6 z-0 w-[100px]">
+                    <button onClick={(e) => { e.stopPropagation(); resetItem(); onCloseCase(t.id); }} className="text-white font-bold text-xs flex flex-col items-center justify-center w-full h-full">
+                       <i className="fas fa-check-circle mb-1 text-lg"></i>辦結
+                    </button>
                 </div>
               )}
 
-              {/* 左滑顯示：右側紅色刪除按鈕 */}
-              <div className="absolute inset-y-0 right-0 bg-red-500 flex items-center justify-end pr-5 rounded-2xl z-0 w-full">
-                  <button onClick={(e) => { e.stopPropagation(); setTranslateX(0); onDelete(e, t.id); }} className="text-white font-bold text-xs flex flex-col items-center justify-center"><i className="fas fa-trash-alt mb-1 text-lg"></i>刪除</button>
+              {/* 底層右邊：左滑彈出的刪除操作區 */}
+              <div className="absolute inset-y-0 right-0 bg-red-500 flex items-center justify-end pr-6 z-0 w-[100px]">
+                  <button onClick={(e) => { e.stopPropagation(); resetItem(); onDelete(e, t.id); }} className="text-white font-bold text-xs flex flex-col items-center justify-center w-full h-full">
+                     <i className="fas fa-trash-alt mb-1 text-lg"></i>刪除
+                  </button>
               </div>
 
-              {/* 中央本體卡片 */}
-              <div onClick={() => onClick(t)} 
+              {/* 最上層浮動本體資訊卡片卡塊 */}
+              <div onClick={() => { if(currentX.current !== 0) { resetItem(); } else { onClick(t); } }} 
                  onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
-                 style={{ transform: `translateX(${translateX}px)`, transition: 'transform 0.2s ease-out' }}
-                 className={`${t.completed ? "bg-slate-50 opacity-75" : "bg-white"} rounded-2xl p-4 shadow-sm border border-slate-100 relative z-10 active:scale-[0.99] transition-transform flex items-center justify-between`}>
+                 style={{ 
+                    transform: `translateX(${translateX}px)`, 
+                    transition: isMoving ? 'none' : 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)' 
+                 }}
+                 className={`${t.completed ? "bg-slate-50 opacity-75" : "bg-white"} h-full w-full rounded-2xl p-4 shadow-sm border border-slate-100 absolute z-10 top-0 left-0 flex items-center justify-between transition-transform`}>
                   <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${t.completed ? 'bg-slate-300' : (isOverdue ? 'bg-red-500' : 'bg-blue-500')}`}></div>
-                  <div className="flex-1 min-w-0 pl-3">
+                  <div className="flex-1 min-w-0 pl-2">
                      <div>
                         <div className="flex items-center gap-2 mb-1">
-                           <h3 className={`font-bold text-slate-800 text-lg line-clamp-1 ${t.completed?'line-through text-slate-400':''}`}>{t.title}</h3>
-                           {t.imageUrl && <i className="fas fa-image text-slate-400"></i>}
+                           <h3 className={`font-bold text-slate-800 text-base line-clamp-1 ${t.completed?'line-through text-slate-400':''}`}>{t.title}</h3>
+                           {t.imageUrl && <i className="fas fa-image text-slate-400 text-sm"></i>}
                         </div>
-                        <div className="text-xs text-slate-500 space-y-1">
-                           <div>委託人：{t.delegator} | {t.type}</div>
-                           {latestLog && <div className="text-slate-400 italic truncate max-w-[200px]">日誌：{latestLog.content}</div>}
+                        <div className="text-[11px] text-slate-500 space-y-0.5">
+                           <div className="truncate">委託人：{t.delegator} | {t.type}</div>
+                           {latestLog && <div className="text-slate-400 italic truncate max-w-[220px]">日誌：{latestLog.content}</div>}
                            <div className={`font-bold ${isOverdue ? 'text-red-500' : ''}`}>
                               {t.completed ? `辦結：${formatDateTime(t.completedAt)}` : `期限：${formatDateTime(t.endDate)}`}
                            </div>
-                           {t.remindDate && !t.completed && (
-                              <div className="text-[10px] text-blue-500 flex items-center gap-1 font-medium">
-                                 <i className="fas fa-bell"></i> 提醒時間：{formatDateTime(t.remindDate)}
-                              </div>
-                           )}
                         </div>
                      </div>
                   </div>
                   
-                  <div className="flex-shrink-0 ml-2 flex items-center">
+                  <div className="flex-shrink-0 ml-2 flex items-center gap-1.5">
+                     {t.remindDate && !t.completed && <i className="fas fa-clock text-blue-400 text-xs"></i>}
                      {isOverdue && (
-                        <div className="text-red-500 text-xl p-1 animate-wobble-bell">
+                        <div className="text-red-500 text-base p-1 animate-wobble-bell">
                            <i className="fas fa-bell"></i>
                         </div>
                      )}

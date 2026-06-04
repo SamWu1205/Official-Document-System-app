@@ -29,7 +29,6 @@
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-    /* 搖晃鈴鐺關鍵幀動畫 */
     .animate-wobble-bell {
       animation: wobbleBell 1.5s ease-in-out infinite;
       transform-origin: top center;
@@ -180,28 +179,45 @@
         const [translateX, setTranslateX] = useState(0);
         const startX = useRef(0);
         const latestLog = t.logs && t.logs.length > 0 ? t.logs[t.logs.length - 1] : null;
-
-        // 判斷案件是否逾期（未完成且過期）
         const isOverdue = !t.completed && new Date(t.endDate) < new Date();
 
-        const onTouchStart = (e) => { if(t.completed) return; startX.current = e.touches[0].clientX; };
+        // 雙向滑動偵測手裝
+        const onTouchStart = (e) => { startX.current = e.touches[0].clientX; };
         const onTouchMove = (e) => {
-            if(t.completed) return;
             const diff = e.touches[0].clientX - startX.current;
-            if (diff < 0 && diff > -100) setTranslateX(diff);
+            // 限制最大滑動拉伸幅度
+            if (diff < 100 && diff > -100) {
+                setTranslateX(diff);
+            }
         };
         const onTouchEnd = () => {
-            if(t.completed) return;
-            if (translateX < -60) setTranslateX(-80); else setTranslateX(0);
+            if (translateX < -50) {
+                // 左滑大於閾值，定位至顯示右側刪除鍵
+                setTranslateX(-80);
+            } else if (translateX > 50 && !t.completed) {
+                // 右滑大於閾值（且未辦結），定位至顯示左側辦結鍵
+                setTranslateX(80);
+            } else {
+                // 回彈
+                setTranslateX(0);
+            }
         };
 
         return (
-           <div className="relative rounded-2xl overflow-hidden mb-3">
+           <div className="relative rounded-2xl overflow-hidden mb-3 bg-slate-100">
+              {/* 右滑顯示：左側綠色辦結按鈕 */}
               {!t.completed && (
-                <div className="absolute inset-0 bg-red-100 flex justify-end items-center pr-4 rounded-2xl">
-                    <button onClick={(e) => { e.stopPropagation(); onCloseCase(t.id); }} className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold shadow-sm h-[80%] flex flex-col items-center justify-center text-xs"><i className="fas fa-check-circle mb-1 text-lg"></i>辦結</button>
+                <div className="absolute inset-y-0 left-0 bg-emerald-500 flex items-center pl-5 rounded-2xl z-0 w-full">
+                    <button onClick={(e) => { e.stopPropagation(); setTranslateX(0); onCloseCase(t.id); }} className="text-white font-bold text-xs flex flex-col items-center justify-center"><i className="fas fa-check-circle mb-1 text-lg"></i>辦結</button>
                 </div>
               )}
+
+              {/* 左滑顯示：右側紅色刪除按鈕 */}
+              <div className="absolute inset-y-0 right-0 bg-red-500 flex items-center justify-end pr-5 rounded-2xl z-0 w-full">
+                  <button onClick={(e) => { e.stopPropagation(); setTranslateX(0); onDelete(e, t.id); }} className="text-white font-bold text-xs flex flex-col items-center justify-center"><i className="fas fa-trash-alt mb-1 text-lg"></i>刪除</button>
+              </div>
+
+              {/* 中央本體卡片 */}
               <div onClick={() => onClick(t)} 
                  onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
                  style={{ transform: `translateX(${translateX}px)`, transition: 'transform 0.2s ease-out' }}
@@ -228,17 +244,11 @@
                      </div>
                   </div>
                   
-                  {/* 右側警示區塊：逾期顯示紅色搖晃鈴鐺，完成顯示刪除 */}
                   <div className="flex-shrink-0 ml-2 flex items-center">
                      {isOverdue && (
-                        <div className="text-red-500 text-xl mr-2 p-1 animate-wobble-bell">
+                        <div className="text-red-500 text-xl p-1 animate-wobble-bell">
                            <i className="fas fa-bell"></i>
                         </div>
-                     )}
-                     {t.completed && (
-                        <button onClick={(e) => { e.stopPropagation(); onDelete(e, t.id); }} className="text-slate-300 hover:text-red-500 p-2">
-                           <i className="fas fa-trash-alt"></i>
-                        </button>
                      )}
                   </div>
               </div>
@@ -268,7 +278,6 @@
       const [delStartDate, setDelStartDate] = useState(getTodayLocalDateString());
       const [delEndDate, setDelEndDate] = useState(getTodayLocalDateString());
 
-      // 紀錄已被本地推播過的 Task ID，防止一分鐘內重複跳窗
       const notifiedTaskIds = useRef(new Set());
 
       useEffect(() => {
@@ -277,7 +286,6 @@
         }
       }, [currentView]);
 
-      // 定期輪詢精準時間提醒功能 (每 30 秒比對一次)
       useEffect(() => {
         if (!user || tasks.length === 0) return;
 
@@ -293,7 +301,6 @@
             if (t.completed || !t.remindDate) return;
             
             const remindTime = new Date(t.remindDate);
-            // 判斷當前時間是否「大於等於自訂提醒時間」，且距離在1小時內，且先前沒跳過通知
             if (now >= remindTime && (now - remindTime < 3600000) && !notifiedTaskIds.current.has(t.id)) {
               new Notification("⏰ 管制案件設定時間提醒", {
                 body: `您設定的任務提醒時間已到：\n【${t.title}】\n請確認辦理進度。`,
@@ -304,7 +311,6 @@
           });
         };
 
-        // 初次執行與定時器排程
         checkCustomReminders();
         const intervalId = setInterval(checkCustomReminders, 30000);
         return () => clearInterval(intervalId);
@@ -346,7 +352,6 @@
       };
 
       const [showTaskModal, setShowTaskModal] = useState(false);
-      // 新增 remindDate 預設值為空字串
       const [taskForm, setTaskForm] = useState({ id: null, title: "", type: "行政", delegator: "", priority: "一般", startDate: getCurrentDateTimeISO(), endDate: getCurrentDateTimeISO(), remindDate: "", logs: [], imageUrl: "" });
       const [newLogInput, setNewLogInput] = useState("");
       const [taskTab, setTaskTab] = useState("active");
@@ -551,7 +556,6 @@
             
             if (id) {
                await userRef.doc(id).update(payload);
-               // 重置該 Task ID 的通知狀態，允許新時間重新提醒
                notifiedTaskIds.current.delete(id);
             } else {
                payload.createdAt = new Date().toISOString(); 
@@ -846,7 +850,7 @@
                 </div>
                 <div className="relative"><i className="fas fa-search absolute left-3 top-3 text-slate-300"></i><input type="text" className="input-ios pl-10 h-10 shadow-sm border-none" placeholder="搜尋標題..." value={taskSearch} onChange={e=>setTaskSearch(e.target.value)} /></div>
                 <div className="space-y-3 pb-20">
-                   {tasks.filter(t => (taskTab === 'active' ? !t.completed : t.completed) && t.title.includes(taskSearch)).map(t => <TaskItem key={t.id} t={t} onClick={(task)=>{setTaskForm({...task, remindDate:task.remindDate||"", logs:task.logs||[]}); setShowTaskModal(true);}} onCloseCase={(id)=>db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).update({completed:true, completedAt:new Date().toISOString()})} onDelete={(e,id)=>confirm("刪除?")&&db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).delete()} />)}
+                   {tasks.filter(t => (taskTab === 'active' ? !t.completed : t.completed) && t.title.includes(taskSearch)).map(t => <TaskItem key={t.id} t={t} onClick={(task)=>{setTaskForm({...task, remindDate:task.remindDate||"", logs:task.logs||[]}); setShowTaskModal(true);}} onCloseCase={(id)=>db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).update({completed:true, completedAt:new Date().toISOString()})} onDelete={(e,id)=>confirm("確定要刪除此任務管制案件嗎？")&&db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).delete()} />)}
                 </div>
                 <button onClick={()=>{setTaskForm({id:null, title:"", type:"行政", delegator:"", priority:"一般", startDate:getCurrentDateTimeISO(), endDate:getCurrentDateTimeISO(), remindDate:"", logs:[], imageUrl:""}); setShowTaskModal(true);}} className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl z-20"><i className="fas fa-plus"></i></button>
              </main>
@@ -972,7 +976,6 @@
                          <div className="space-y-1"><label className="text-xs font-bold text-slate-400">辦理期限</label><input type="datetime-local" className={`input-ios text-xs ${new Date(taskForm.endDate) < new Date() ? 'border-red-400' : 'bg-slate-50'}`} value={taskForm.endDate} onChange={e=>setTaskForm({...taskForm, endDate:e.target.value})} /></div>
                       </div>
                       
-                      {/* 需求二：新增指定提醒時間欄位 */}
                       <div className="space-y-1">
                          <label className="text-xs font-bold text-blue-600 flex items-center gap-1">
                             <i className="fas fa-bell animate-pulse"></i> 自訂彈窗提醒時間 (選填)

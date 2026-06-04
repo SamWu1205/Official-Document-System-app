@@ -228,11 +228,50 @@
       const [isBatchMode, setIsBatchMode] = useState(false);
       const [selectedRecordIds, setSelectedRecordIds] = useState(new Set());
 
+      // 批量刪除專用狀態區
+      const [delStartDate, setDelStartDate] = useState(getTodayLocalDateString());
+      const [delEndDate, setDelEndDate] = useState(getTodayLocalDateString());
+
       useEffect(() => {
         if (currentView === "home") {
           setForm(prev => ({ ...prev, date: getTodayLocalDateString() }));
         }
       }, [currentView]);
+
+      // 瀏覽器主動通知功能：檢查未辦結且接近時效的任務
+      useEffect(() => {
+        if (tasks.length === 0) return;
+        
+        // 請求通知權限
+        if (Notification.permission === "default") {
+          Notification.requestPermission();
+        }
+
+        const checkTaskDeadlines = () => {
+          if (Notification.permission !== "granted") return;
+          
+          const now = new Date();
+          tasks.forEach(t => {
+            if (t.completed) return;
+            const endDate = new Date(t.endDate);
+            const timeDiff = endDate - now; // 毫秒差距
+            const hoursDiff = timeDiff / (1000 * 60 * 60);
+
+            // 如果距離到期時間小於 24 小時且大於 0 小時，觸發彈窗提示
+            if (hoursDiff > 0 && hoursDiff <= 24) {
+              new Notification("⚠️ 業管公文時效提醒", {
+                body: `任務「${t.title}」將於 ${formatDateTime(t.endDate)} 到期，請儘速辦結！`,
+                icon: "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/svgs/solid/bell.svg"
+              });
+            }
+          });
+        };
+
+        // 開啟工作管制分頁或初次載入時執行一次檢查
+        if (currentView === "tasks") {
+          checkTaskDeadlines();
+        }
+      }, [tasks, currentView]);
 
       const handleBatchCopy = () => {
           if (selectedRecordIds.size === 0) return alert("請先選擇要複製的紀錄");
@@ -533,26 +572,25 @@
           }
       };
 
-      const handleBatchDeleteByDate = async () => {
-        const startDate = prompt("請輸入開始日期 (YYYY-MM-DD)：");
-        const endDate = prompt("請輸入結束日期 (YYYY-MM-DD)：");
-        if (!startDate || !endDate) return;
-        const start = new Date(startDate);
-        const end = new Date(endDate);
+      const handleBatchDeleteByDateAction = async () => {
+        if (!delStartDate || !delEndDate) return alert("請選定完整的開始與結束日期");
+        const start = new Date(delStartDate + "T00:00:00");
+        const end = new Date(delEndDate + "T23:59:59");
+        
         const targets = records.filter(r => {
           const d = new Date(r.date);
           return d >= start && d <= end;
         });
-        if (targets.length === 0) return alert("該區間內無紀錄");
-        if (confirm(`確定要刪除 ${targets.length} 筆紀錄嗎？此動作無法復原。`)) {
+        
+        if (targets.length === 0) return alert("該指定區間內查無任何發文紀錄");
+        if (confirm(`⚠️ 警告：確定要刪除此區間內共 ${targets.length} 筆發文紀錄嗎？此動作將無法復原。`)) {
           setProcessing(true);
           try {
             const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records");
             const batch = db.batch();
             targets.forEach(r => batch.delete(userRef.doc(r.id)));
             await batch.commit();
-            alert("刪除成功！");
-            window.location.reload();
+            alert("✨ 批次資料刪除成功！");
           } catch (e) {
             alert("刪除失敗：" + e.message);
           } finally {
@@ -596,7 +634,6 @@
                  <button onClick={handleExport} className="w-full text-left px-4 py-3 text-slate-600 font-bold flex items-center gap-3"><i className="fas fa-file-export w-6"></i>Excel 匯出</button>
                  <button onClick={()=>fileInputRef.current.click()} className="w-full text-left px-4 py-3 text-slate-600 font-bold flex items-center gap-3"><i className="fas fa-file-import w-6"></i>Excel 匯入</button>
                  <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx,.xls" onChange={handleImport} />
-                 <button onClick={handleBatchDeleteByDate} disabled={processing} className="w-full text-left px-4 py-3 text-red-500 font-bold flex items-center gap-3"><i className="fas fa-trash-alt w-6"></i>批量刪除紀錄</button>
               </div>
             </div>
             <div className="p-4 border-t"><button onClick={()=>auth.signOut()} className="w-full text-left px-4 py-3 text-red-500 font-bold"><i className="fas fa-sign-out-alt mr-2"></i>登出</button></div>
@@ -772,6 +809,28 @@
 
           {currentView === 'personnel' && (
              <main className="p-4 space-y-6 max-w-md mx-auto fade-in">
+                
+                {/* 需求一：功能列表內建區間資料刪除控制台 */}
+                <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4 border border-slate-200">
+                   <h2 className="font-bold text-red-600 border-b pb-2 flex items-center gap-2">
+                       <i className="fas fa-history"></i> 批量刪除管理控制台
+                   </h2>
+                   <p className="text-xs text-slate-400 leading-relaxed">選定特定日期區間，一鍵清除系統內對應的發文數據紀錄。此動作具破壞性，請謹慎操作。</p>
+                   <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                         <label className="text-xs font-bold text-slate-500 ml-1">起迄開始日期</label>
+                         <input type="date" className="input-ios h-10 text-sm" value={delStartDate} onChange={e=>setDelStartDate(e.target.value)} />
+                      </div>
+                      <div className="space-y-1">
+                         <label className="text-xs font-bold text-slate-500 ml-1">終止截止日期</label>
+                         <input type="date" className="input-ios h-10 text-sm" value={delEndDate} onChange={e=>setDelEndDate(e.target.value)} />
+                      </div>
+                   </div>
+                   <button onClick={handleBatchDeleteByDateAction} disabled={processing} className="w-full bg-red-500 text-white font-bold h-11 rounded-xl text-sm shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2">
+                       <i className="fas fa-trash-alt"></i> 執行區間批量刪除
+                   </button>
+                </div>
+
                 <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4 border border-slate-200">
                    <h2 className="font-bold text-slate-800 border-b pb-2 flex items-center gap-2">
                        <i className="fas fa-clock text-blue-500"></i>排程自動匯出備份設定
@@ -780,4 +839,129 @@
                        <span className="text-sm font-bold text-slate-700">啟用定期信箱自動匯出</span>
                        <label className="relative inline-flex items-center cursor-pointer">
                            <input type="checkbox" checked={exportEnabled} onChange={e => setExportEnabled(e.target.checked)} className="sr-only peer" />
-                           <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-
+                           <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                       </label>
+                   </div>
+                   
+                   {exportEnabled && (
+                      <div className="space-y-3 fade-in">
+                          <div className="space-y-1">
+                              <label className="text-xs font-bold text-slate-400 ml-1">匯出週期頻率</label>
+                              <select className="input-ios h-10 text-sm font-bold" value={exportPeriod} onChange={e=>setExportPeriod(e.target.value)}>
+                                  <option value="weekly">每週固定匯出 (每週一)</option>
+                                  <option value="monthly">每月固定匯出 (每月1號)</option>
+                                  <option value="biweekly">每雙週固定匯出</option>
+                              </select>
+                          </div>
+                          <div className="space-y-1">
+                              <label className="text-xs font-bold text-slate-400 ml-1">指定接收通知信箱</label>
+                              <input type="email" className="input-ios h-10 text-sm font-mono font-bold" placeholder="example@mail.mil.tw" value={exportEmail} onChange={e=>setExportEmail(e.target.value)} />
+                          </div>
+                      </div>
+                   )}
+                   <button onClick={handleSaveAutoExport} disabled={processing} className="w-full bg-slate-900 text-white font-bold h-10 rounded-xl text-sm transition-transform active:scale-95">
+                       儲存匯出排程設定
+                   </button>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
+                   <h2 className="font-bold text-slate-800 border-b pb-2">人員及預設代字設定</h2>
+                   <div className="flex gap-2">
+                      <input className="input-ios h-10 flex-1" placeholder="輸入姓名..." value={newAuthor} onChange={e=>setNewAuthor(e.target.value)} />
+                      <button className="bg-blue-600 text-white px-4 rounded-xl font-bold" onClick={async()=>{ if(!newAuthor)return; await updateSettings({ authors: [...meta.authors, newAuthor] }); setNewAuthor(""); }}>新增</button>
+                   </div>
+                   <div className="space-y-2 max-h-60 overflow-y-auto no-scrollbar">
+                      {meta.authors.map(a => (
+                         <div key={a} className="flex flex-col gap-1 p-2 bg-slate-50 rounded-lg">
+                            <div className="flex justify-between items-center">
+                              <span className="font-bold">{a}</span>
+                              <button className="text-red-400" onClick={async()=>confirm("刪除?") && await updateSettings({ authors: meta.authors.filter(x=>x!==a) })}><i className="fas fa-trash-alt"></i></button>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                               <span className="text-xs text-slate-400">預設代字:</span>
+                               {editingAuthorDefault === a ? (
+                                  <div className="flex flex-1 gap-1">
+                                    <input className="flex-1 h-7 border rounded px-2 text-xs" list="codeList" value={meta.authorDefaults?.[a] || ""} onChange={(e)=>saveAuthorDefault(a, e.target.value)} onBlur={()=>setTimeout(()=>setEditingAuthorDefault(null), 200)} autoFocus />
+                                    <datalist id="codeList">{meta.codes?.map(c=><option key={c} value={c}/>)}</datalist>
+                                  </div>
+                               ) : (
+                                  <div className="flex flex-1 justify-between items-center cursor-pointer" onClick={()=>setEditingAuthorDefault(a)}>
+                                     <span className="text-xs font-bold text-blue-600">{meta.authorDefaults?.[a] || "未設定"}</span>
+                                     <i className="fas fa-edit text-[10px] text-slate-300"></i>
+                                  </div>
+                               )}
+                            </div>
+                         </div>
+                      ))}
+                   </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
+                   <h2 className="font-bold text-slate-800 border-b pb-2">業務分類設定</h2>
+                   <div className="flex gap-2">
+                      <input className="input-ios h-10 flex-1" placeholder="輸入種類..." value={newTaskType} onChange={e=>setNewTaskType(e.target.value)} />
+                      <button className="bg-slate-800 text-white px-4 rounded-xl font-bold" onClick={async()=>{ if(!newTaskType)return; await updateSettings({ taskTypes: [...meta.taskTypes, newTaskType] }); setNewTaskType(""); }}>新增</button>
+                   </div>
+                   <div className="flex flex-wrap gap-2">
+                      {meta.taskTypes.map(t => (
+                         <span key={t} className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2">
+                            {t} <i className="fas fa-times cursor-pointer" onClick={async()=>await updateSettings({ taskTypes: meta.taskTypes.filter(x=>x!==t) })}></i>
+                         </span>
+                      ))}
+                    </div>
+                </div>
+             </main>
+          )}
+
+          {showTaskModal && (
+             <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0">
+                <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={()=>setShowTaskModal(false)}></div>
+                <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 relative z-10 flex flex-col max-h-[90vh] shadow-2xl">
+                   <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">事項編輯</h2><button onClick={()=>setShowTaskModal(false)}><i className="fas fa-times text-xl"></i></button></div>
+                   <div className="space-y-4 overflow-y-auto no-scrollbar flex-1 pb-4">
+                      <div className="space-y-1"><label className="text-xs font-bold text-slate-400">事項名稱</label><input className="input-ios bg-slate-50 font-bold" value={taskForm.title} onChange={e=>setTaskForm({...taskForm, title:e.target.value})} placeholder="任務內容..." /></div>
+                      <div className="grid grid-cols-2 gap-3">
+                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">種類</label><select className="input-ios bg-slate-50" value={taskForm.type} onChange={e=>setTaskForm({...taskForm, type:e.target.value})}>{meta.taskTypes.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
+                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">委託人</label><input className="input-ios bg-slate-50" value={taskForm.delegator} onChange={e=>setTaskForm({...taskForm, delegator:e.target.value})} placeholder="委託人" /></div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">開始時間</label><input type="datetime-local" className="input-ios bg-slate-50 text-xs" value={taskForm.startDate} onChange={e=>setTaskForm({...taskForm, startDate:e.target.value})} /></div>
+                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">辦理期限</label><input type="datetime-local" className={`input-ios text-xs ${new Date(taskForm.endDate) < new Date() ? 'border-red-400' : 'bg-slate-50'}`} value={taskForm.endDate} onChange={e=>setTaskForm({...taskForm, endDate:e.target.value})} /></div>
+                      </div>
+                      <div className="space-y-2">
+                         <label className="text-xs font-bold text-slate-500"><i className="fas fa-history mr-1"></i> 辦理日誌</label>
+                         <div className="bg-slate-50 rounded-xl p-3 border space-y-2 min-h-[60px]">
+                            {taskForm.logs?.length === 0 ? <div className="text-slate-300 text-xs text-center py-2">尚無紀錄</div> : taskForm.logs?.map(log => (
+                               <div key={log.id} className="flex gap-2 text-sm border-b pb-1 last:border-0"><span className="text-blue-500 font-bold">{log.time}</span><span className="text-slate-700 flex-1">{log.content}</span><button onClick={()=>setTaskForm(p=>({...p, logs:p.logs.filter(l=>l.id!==log.id)}))} className="text-slate-300"><i className="fas fa-times"></i></button></div>
+                            ))}
+                         </div>
+                         <div className="flex gap-2">
+                            <input className="input-ios bg-white flex-1 h-10 text-sm" value={newLogInput} onChange={e=>setNewLogInput(e.target.value)} placeholder="新增進度日誌..." onKeyPress={e=>e.key==='Enter' && addLogEntry()} />
+                            <button onClick={addLogEntry} className="bg-slate-800 text-white px-4 rounded-lg text-sm font-bold">送出</button>
+                         </div>
+                      </div>
+                      <div className="relative">
+                         {taskForm.imageUrl && <div className="relative rounded-xl overflow-hidden mb-2 border border-slate-200"><img src={taskForm.imageUrl} onClick={() => setPreviewImage(taskForm.imageUrl)} className="w-full max-h-40 object-cover cursor-zoom-in" /><button onClick={()=>setTaskForm({...taskForm, imageUrl:""})} className="absolute top-2 right-2 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center backdrop-blur-sm"><i className="fas fa-times text-xs"></i></button></div>}
+                         <button onClick={()=>taskImageInputRef.current.click()} className="w-full h-12 rounded-xl border-2 border-dashed flex items-center justify-center gap-2 text-slate-400 bg-slate-50 text-sm font-bold"><i className="fas fa-camera"></i> {taskForm.imageUrl ? "換圖" : "上傳附件"}</button>
+                         <input type="file" ref={taskImageInputRef} className="hidden" accept="image/*" onChange={async(e)=>{ if(e.target.files[0]) setTaskForm({...taskForm, imageUrl: await compressImage(e.target.files[0])}) }} />
+                      </div>
+                   </div>
+                   <button onClick={handleTaskSubmit} className="w-full bg-slate-900 text-white font-bold h-12 rounded-xl mt-4 shadow-lg active:scale-95">儲存任務</button>
+                </div>
+             </div>
+          )}
+
+          {previewImage && (
+             <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4" onClick={() => setPreviewImage(null)}>
+                <img src={previewImage} className="max-w-full max-h-full object-contain" />
+                <button className="absolute top-10 right-10 text-white text-3xl"><i className="fas fa-times"></i></button>
+             </div>
+          )}
+        </div>
+      );
+    }
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>

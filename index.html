@@ -697,11 +697,14 @@
                   ))}
                </div>
 
-               <div className="space-y-3">
-                  {sortedDocsRecords.length === 0 ? (
-                      <div className="text-center py-8 text-sm text-slate-400 bg-white rounded-xl border border-dashed">該階級當下無發文記錄</div>
-                  ) : sortedDocsRecords.map(r => (
-                    <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex justify-between items-center">
+<div className="space-y-3 min-h-[200px]">
+  {sortedDocsRecords.length === 0 ? (
+    <div className="flex flex-col items-center justify-center py-12 text-slate-400 bg-white rounded-2xl border border-slate-100 shadow-sm">
+      <i className="fas fa-folder-open text-3xl mb-3 opacity-50"></i>
+      <p className="text-sm font-bold">目前無 {docTab} ({docRankTab}) 紀錄</p>
+    </div>
+  ) : sortedDocsRecords.map(r => (
+    <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex justify-between items-center">
                        <div className="flex-1 min-w-0 pr-2">
                            <div className="text-[10px] text-slate-400">{r.date?.replace(/-/g, '/')} | {r.author}</div>
                            <h3 className="font-bold text-slate-800 my-1 truncate">{r.subject}</h3>

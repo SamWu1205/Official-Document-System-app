@@ -104,7 +104,7 @@
                <input type="password" required className="input-ios" placeholder="密碼" value={password} onChange={e=>setPassword(e.target.value)} />
                <button type="submit" className="w-full bg-slate-900 text-white h-12 rounded-xl font-bold">{isRegister ? "註冊" : "登入"}</button>
             </form>
-            <button onClick={()=>setIsRegister(!isRegister)} className="mt-4 text-sm text-blue-600 font-bold underline">{isRegister ? "建立新帳號" : "已有帳號？返回登入"}</button>
+            <button onClick={()=>setIsRegister(!isRegister)} className="mt-4 text-sm text-blue-600 font-bold underline">{isRegister ? "已有帳號？返回登入" : "建立新帳號"}</button>
           </div>
         </div>
       );
@@ -118,11 +118,15 @@
          const numSuffix = r.number ? String(r.number).slice(-3) : "000";
          const subSuffix = (r.docType !== '一般公文' && r.subNumber) ? `(${r.subNumber}號)` : '';
          const text = `${dateText}${r.code || ''}${numSuffix}號${subSuffix}：${r.subject}`;
-         const textArea = document.createElement("textarea");
-         textArea.value = text; document.body.appendChild(textArea);
-         textArea.select();
-         try { document.execCommand('copy'); alert("已複製：\n" + text); } catch (err) { console.error('複製失敗', err); }
-         document.body.removeChild(textArea);
+         if (navigator.clipboard && window.isSecureContext) {
+             navigator.clipboard.writeText(text).then(() => alert("已複製：\n" + text)).catch(err => console.error('複製失敗', err));
+         } else {
+             const textArea = document.createElement("textarea");
+             textArea.value = text; document.body.appendChild(textArea);
+             textArea.select();
+             try { document.execCommand('copy'); alert("已複製：\n" + text); } catch (err) { console.error('複製失敗', err); }
+             document.body.removeChild(textArea);
+         }
       };
 
       return (
@@ -219,13 +223,11 @@
       const [form, setForm] = useState(getInitialForm());
       const [isManualNumber, setIsManualNumber] = useState(false);
       
-      // 改進篩選狀態結構
       const [filter, setFilter] = useState({ type: 'all', value: '', docType: 'all', rank: 'all' });
       const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
       const [isBatchMode, setIsBatchMode] = useState(false);
       const [selectedRecordIds, setSelectedRecordIds] = useState(new Set());
 
-      // 每次回到發文填寫分頁或開啟時，更新日期為當日
       useEffect(() => {
         if (currentView === "home") {
           setForm(prev => ({ ...prev, date: getTodayLocalDateString() }));
@@ -243,20 +245,28 @@
               const subSuffix = (r.docType !== '一般公文' && r.subNumber) ? `(${r.subNumber}號)` : '';
               return `${dateText}${r.code || ''}${numSuffix}號${subSuffix}：${r.subject}`;
           }).join('\n');
-          const textArea = document.createElement("textarea");
-          textArea.value = textToCopy; 
-          document.body.appendChild(textArea);
-          textArea.select();
-          try { 
-              document.execCommand('copy');
-              alert(`已成功複製 ${selected.length} 筆紀錄：\n\n${textToCopy}`); 
+
+          const doCopy = (text) => {
               setIsBatchMode(false);
               setSelectedRecordIds(new Set());
-          } catch (err) { 
-              console.error('複製失敗', err);
-              alert('複製失敗，請稍後再試');
+              alert(`已成功複製 ${selected.length} 筆紀錄：\n\n${text}`);
+          };
+          if (navigator.clipboard && window.isSecureContext) {
+              navigator.clipboard.writeText(textToCopy).then(() => doCopy(textToCopy)).catch(err => { console.error('複製失敗', err); alert('複製失敗，請稍後再試'); });
+          } else {
+              const textArea = document.createElement("textarea");
+              textArea.value = textToCopy;
+              document.body.appendChild(textArea);
+              textArea.select();
+              try {
+                  document.execCommand('copy');
+                  doCopy(textToCopy);
+              } catch (err) {
+                  console.error('複製失敗', err);
+                  alert('複製失敗，請稍後再試');
+              }
+              document.body.removeChild(textArea);
           }
-          document.body.removeChild(textArea);
       };
 
       const [showTaskModal, setShowTaskModal] = useState(false);
@@ -268,7 +278,6 @@
       const [editingSubId, setEditingSubId] = useState(null);
       const [editSubVal, setEditSubVal] = useState("");
       
-      // 公文系統分頁與階級細分狀態
       const [docTab, setDocTab] = useState("人勤令");
       const [docRankTab, setDocRankTab] = useState("軍官");
 
@@ -276,7 +285,6 @@
       const [newTaskType, setNewTaskType] = useState("");
       const [editingAuthorDefault, setEditingAuthorDefault] = useState(null);
       
-      // 自動匯出欄位變數
       const [exportEnabled, setExportEnabled] = useState(false);
       const [exportPeriod, setExportPeriod] = useState("weekly");
       const [exportEmail, setExportEmail] = useState("");
@@ -289,7 +297,6 @@
       useEffect(() => {
         if (!user) return;
         const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-        // 優化提升上限至 1000 筆
         const unsubRec = userRef.collection("records").orderBy("createdAt", "desc").limit(1000).onSnapshot(s => setRecords(s.docs.map(d => ({ id: d.id, ...d.data() }))));
         const unsubTask = userRef.collection("tasks").orderBy("createdAt", "desc").onSnapshot(s => setTasks(s.docs.map(d => ({ id: d.id, ...d.data() }))));
         const unsubMeta = userRef.collection("metadata").doc("general").onSnapshot(doc => { 
@@ -337,7 +344,6 @@
         });
       };
 
-      // 整合進階選單篩選邏輯
       const sortedRecords = useMemo(() => {
         let sortable = [...records];
         
@@ -372,13 +378,12 @@
         }));
       };
 
-      // 公文系統：人職令與人勤令依據選定公文種類與階級分開顯示
       const sortedDocsRecords = useMemo(() => {
           let docs = records.filter(r => r.docType === docTab && r.rank === docRankTab);
           docs.sort((a, b) => {
               const subA = parseInt(a.subNumber || "0", 10);
               const subB = parseInt(b.subNumber || "0", 10);
-              return subB - subA; // 降序排列
+              return subB - subA;
           });
           return docs;
       }, [records, docTab, docRankTab]);
@@ -484,7 +489,6 @@
          await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").set(newData, { merge: true });
       };
 
-      // 儲存自動匯出設定
       const handleSaveAutoExport = async () => {
          if (exportEnabled && !exportEmail) return alert("請輸入指定的通知信箱");
          setProcessing(true);
@@ -528,6 +532,34 @@
               alert(`匯出失敗：${error.message}\n\n※ 若您在 LINE 或 APP 內開啟，請點擊右上角改用 Safari / Chrome 瀏覽器開啟即可正常下載。`);
           }
       };
+
+      const handleBatchDeleteByDate = async () => {
+        const startDate = prompt("請輸入開始日期 (YYYY-MM-DD)：");
+        const endDate = prompt("請輸入結束日期 (YYYY-MM-DD)：");
+        if (!startDate || !endDate) return;
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const targets = records.filter(r => {
+          const d = new Date(r.date);
+          return d >= start && d <= end;
+        });
+        if (targets.length === 0) return alert("該區間內無紀錄");
+        if (confirm(`確定要刪除 ${targets.length} 筆紀錄嗎？此動作無法復原。`)) {
+          setProcessing(true);
+          try {
+            const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records");
+            const batch = db.batch();
+            targets.forEach(r => batch.delete(userRef.doc(r.id)));
+            await batch.commit();
+            alert("刪除成功！");
+            window.location.reload();
+          } catch (e) {
+            alert("刪除失敗：" + e.message);
+          } finally {
+            setProcessing(false);
+          }
+        }
+      };
       
       const handleImport = (e) => {
           const file = e.target.files[0];
@@ -540,40 +572,6 @@
               for (const r of recJson) {
                   await userRef.collection("records").add({ ...r, createdAt: r.createdAt || new Date().toISOString() });
               }
-
-            const handleBatchDeleteByDate = async () => {
-    const startDate = prompt("請輸入開始日期 (YYYY-MM-DD)：");
-    const endDate = prompt("請輸入結束日期 (YYYY-MM-DD)：");
-    
-    if (!startDate || !endDate) return;
-    
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    
-    // 篩選出日期區間內的紀錄
-    const targets = records.filter(r => {
-      const d = new Date(r.date);
-      return d >= start && d <= end;
-    });
-
-    if (targets.length === 0) return alert("該區間內無紀錄");
-    
-    if (confirm(`確定要刪除 ${targets.length} 筆紀錄嗎？此動作無法復原。`)) {
-      setProcessing(true);
-      try {
-        const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records");
-        const batch = db.batch(); 
-        targets.forEach(r => batch.delete(userRef.doc(r.id)));
-        await batch.commit();
-        alert("刪除成功！");
-        window.location.reload(); // 刪除後重整頁面以更新列表
-      } catch (e) {
-        alert("刪除失敗：" + e.message);
-      } finally {
-        setProcessing(false);
-      }
-    }
-  };
               alert("匯入完成"); window.location.reload();
           };
           reader.readAsBinaryString(file);
@@ -598,6 +596,7 @@
                  <button onClick={handleExport} className="w-full text-left px-4 py-3 text-slate-600 font-bold flex items-center gap-3"><i className="fas fa-file-export w-6"></i>Excel 匯出</button>
                  <button onClick={()=>fileInputRef.current.click()} className="w-full text-left px-4 py-3 text-slate-600 font-bold flex items-center gap-3"><i className="fas fa-file-import w-6"></i>Excel 匯入</button>
                  <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx,.xls" onChange={handleImport} />
+                 <button onClick={handleBatchDeleteByDate} disabled={processing} className="w-full text-left px-4 py-3 text-red-500 font-bold flex items-center gap-3"><i className="fas fa-trash-alt w-6"></i>批量刪除紀錄</button>
               </div>
             </div>
             <div className="p-4 border-t"><button onClick={()=>auth.signOut()} className="w-full text-left px-4 py-3 text-red-500 font-bold"><i className="fas fa-sign-out-alt mr-2"></i>登出</button></div>
@@ -605,7 +604,9 @@
 
           <header className="sticky top-0 z-30 bg-white shadow-sm px-4 h-14 flex items-center gap-4">
             <button onClick={() => setMenuOpen(true)} className="text-slate-700 text-xl p-1"><i className="fas fa-bars"></i></button>
-            <h1 className="font-bold text-lg text-slate-800">{{home:'發文填寫',docs:'公文系統',tasks:'工作管制',personnel:'系統設定'}[currentView]}</h1>
+            <h1 className="font-bold text-lg text-slate-800">
+              { {home:'發文填寫',docs:'公文系統',tasks:'工作管制',personnel:'系統設定'}[currentView] }
+            </h1>
           </header>
 
           {currentView === 'home' && (
@@ -643,7 +644,6 @@
                 </div>
               </div>
 
-              {/* 階層進階篩選功能選單 */}
               <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
                  <div className="text-xs font-bold text-slate-500"><i className="fas fa-filter mr-1"></i> 進階資料篩選列表</div>
                  <div className="grid grid-cols-2 gap-2">
@@ -717,12 +717,10 @@
 
           {currentView === 'docs' && (
             <main className="p-4 space-y-4 max-w-md mx-auto fade-in">
-               {/* 頂部公文類別大頁籤 */}
                <div className="flex bg-slate-200 p-1 rounded-xl">
                   {['人勤令','人職令'].map(t => <button key={t} onClick={()=>setDocTab(t)} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${docTab===t?'bg-white text-blue-600 shadow-sm':'text-slate-500'}`}>{t}</button>)}
                </div>
 
-               {/* 細分：獨立的軍官、士官、士兵階級次頁籤 */}
                <div className="flex bg-slate-100 p-1 rounded-lg gap-1 border border-slate-200">
                   {['軍官','士官','士兵'].map(r => (
                       <button key={r} onClick={() => setDocRankTab(r)} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${docRankTab === r ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}>
@@ -731,14 +729,14 @@
                   ))}
                </div>
 
-<div className="space-y-3 min-h-[200px]">
-  {sortedDocsRecords.length === 0 ? (
-    <div className="flex flex-col items-center justify-center py-12 text-slate-400 bg-white rounded-2xl border border-slate-100 shadow-sm">
-      <i className="fas fa-folder-open text-3xl mb-3 opacity-50"></i>
-      <p className="text-sm font-bold">目前無 {docTab} ({docRankTab}) 紀錄</p>
-    </div>
-  ) : sortedDocsRecords.map(r => (
-    <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex justify-between items-center">
+               <div className="space-y-3 min-h-[200px]">
+                  {sortedDocsRecords.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-slate-400 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                      <i className="fas fa-folder-open text-3xl mb-3 opacity-50"></i>
+                      <p className="text-sm font-bold">目前無 {docTab} ({docRankTab}) 紀錄</p>
+                    </div>
+                  ) : sortedDocsRecords.map(r => (
+                    <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex justify-between items-center">
                        <div className="flex-1 min-w-0 pr-2">
                            <div className="text-[10px] text-slate-400">{r.date?.replace(/-/g, '/')} | {r.author}</div>
                            <h3 className="font-bold text-slate-800 my-1 truncate">{r.subject}</h3>
@@ -774,8 +772,6 @@
 
           {currentView === 'personnel' && (
              <main className="p-4 space-y-6 max-w-md mx-auto fade-in">
-                
-                {/* 新增自動定時匯出管制區塊 */}
                 <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4 border border-slate-200">
                    <h2 className="font-bold text-slate-800 border-b pb-2 flex items-center gap-2">
                        <i className="fas fa-clock text-blue-500"></i>排程自動匯出備份設定
@@ -784,137 +780,4 @@
                        <span className="text-sm font-bold text-slate-700">啟用定期信箱自動匯出</span>
                        <label className="relative inline-flex items-center cursor-pointer">
                            <input type="checkbox" checked={exportEnabled} onChange={e => setExportEnabled(e.target.checked)} className="sr-only peer" />
-                           <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                       </label>
-                   </div>
-                   
-                   {exportEnabled && (
-                      <div className="space-y-3 fade-in">
-                          <div className="space-y-1">
-                              <label className="text-xs font-bold text-slate-400 ml-1">匯出週期頻率</label>
-                              <select className="input-ios h-10 text-sm font-bold" value={exportPeriod} onChange={e=>setExportPeriod(e.target.value)}>
-                                  <option value="weekly">每週固定匯出 (每週一)</option>
-                                  <option value="monthly">每月固定匯出 (每月1號)</option>
-                                  <option value="biweekly">每雙週固定匯出</option>
-                              </select>
-                          </div>
-                          <div className="space-y-1">
-                              <label className="text-xs font-bold text-slate-400 ml-1">指定接收通知信箱</label>
-                              <input type="email" className="input-ios h-10 text-sm font-mono font-bold" placeholder="example@mail.mil.tw" value={exportEmail} onChange={e=>setExportEmail(e.target.value)} />
-                          </div>
-                      </div>
-                   )}
-                   <button onClick={handleSaveAutoExport} disabled={processing} className="w-full bg-slate-900 text-white font-bold h-10 rounded-xl text-sm transition-transform active:scale-95">
-                       儲存匯出排程設定
-                   </button>
-                </div>
-
-                <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
-                   <h2 className="font-bold text-slate-800 border-b pb-2">人員及預設代字設定</h2>
-                   <div className="flex gap-2">
-                      <input className="input-ios h-10 flex-1" placeholder="輸入姓名..." value={newAuthor} onChange={e=>setNewAuthor(e.target.value)} />
-                      <button className="bg-blue-600 text-white px-4 rounded-xl font-bold" onClick={async()=>{ if(!newAuthor)return; await updateSettings({ authors: [...meta.authors, newAuthor] }); setNewAuthor(""); }}>新增</button>
-                   </div>
-                   <div className="space-y-2 max-h-60 overflow-y-auto no-scrollbar">
-                      {meta.authors.map(a => (
-                         <div key={a} className="flex flex-col gap-1 p-2 bg-slate-50 rounded-lg">
-                            <div className="flex justify-between items-center">
-                              <span className="font-bold">{a}</span>
-                              <button className="text-red-400" onClick={async()=>confirm("刪除?") && await updateSettings({ authors: meta.authors.filter(x=>x!==a) })}><i className="fas fa-trash-alt"></i></button>
-                            </div>
-                            <div className="flex items-center gap-2 mt-1">
-                               <span className="text-xs text-slate-400">預設代字:</span>
-                               {editingAuthorDefault === a ? (
-                                  <div className="flex flex-1 gap-1">
-                                    <input className="flex-1 h-7 border rounded px-2 text-xs" list="codeList" value={meta.authorDefaults?.[a] || ""} onChange={(e)=>saveAuthorDefault(a, e.target.value)} onBlur={()=>setTimeout(()=>setEditingAuthorDefault(null), 200)} autoFocus />
-                                    <datalist id="codeList">{meta.codes?.map(c=><option key={c} value={c}/>)}</datalist>
-                                  </div>
-                               ) : (
-                                  <div className="flex flex-1 justify-between items-center cursor-pointer" onClick={()=>setEditingAuthorDefault(a)}>
-                                     <span className="text-xs font-bold text-blue-600">{meta.authorDefaults?.[a] || "未設定"}</span>
-                                     <i className="fas fa-edit text-[10px] text-slate-300"></i>
-                                  </div>
-                               )}
-                            </div>
-                         </div>
-                      ))}
-                   </div>
-                </div>
-
-                <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
-                   <h2 className="font-bold text-slate-800 border-b pb-2">業務分類設定</h2>
-                   <div className="flex gap-2">
-                      <input className="input-ios h-10 flex-1" placeholder="輸入種類..." value={newTaskType} onChange={e=>setNewTaskType(e.target.value)} />
-                      <button className="bg-slate-800 text-white px-4 rounded-xl font-bold" onClick={async()=>{ if(!newTaskType)return; await updateSettings({ taskTypes: [...meta.taskTypes, newTaskType] }); setNewTaskType(""); }}>新增</button>
-                   </div>
-                   <div className="flex flex-wrap gap-2">
-                      {meta.taskTypes.map(t => (
-                         <span key={t} className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2">
-                            {t} <i className="fas fa-times cursor-pointer" onClick={async()=>await updateSettings({ taskTypes: meta.taskTypes.filter(x=>x!==t) })}></i>
-                         </span>
-                      ))}
-                    </div>
-                </div>
-             </main>
-          )}
-
-          {showTaskModal && (
-             <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0">
-                <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={()=>setShowTaskModal(false)}></div>
-                <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 relative z-10 flex flex-col max-h-[90vh] shadow-2xl">
-                   <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">事項編輯</h2><button onClick={()=>setShowTaskModal(false)}><i className="fas fa-times text-xl"></i></button></div>
-                   <div className="space-y-4 overflow-y-auto no-scrollbar flex-1 pb-4">
-                      <div className="space-y-1"><label className="text-xs font-bold text-slate-400">事項名稱</label><input className="input-ios bg-slate-50 font-bold" value={taskForm.title} onChange={e=>setTaskForm({...taskForm, title:e.target.value})} placeholder="任務內容..." /></div>
-                      <div className="grid grid-cols-2 gap-3">
-                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">種類</label><select className="input-ios bg-slate-50" value={taskForm.type} onChange={e=>setTaskForm({...taskForm, type:e.target.value})}>{meta.taskTypes.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
-                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">委託人</label><input className="input-ios bg-slate-50" value={taskForm.delegator} onChange={e=>taskForm({...taskForm, delegator:e.target.value})} placeholder="委託人" /></div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">開始時間</label><input type="datetime-local" className="input-ios bg-slate-50 text-xs" value={taskForm.startDate} onChange={e=>setTaskForm({...taskForm, startDate:e.target.value})} /></div>
-                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">辦理期限</label><input type="datetime-local" className={`input-ios text-xs ${new Date(taskForm.endDate) < new Date() ? 'border-red-400' : 'bg-slate-50'}`} value={taskForm.endDate} onChange={e=>setTaskForm({...taskForm, endDate:e.target.value})} /></div>
-                      </div>
-                      <div className="space-y-2">
-                         <label className="text-xs font-bold text-slate-500"><i className="fas fa-history mr-1"></i> 辦理日誌</label>
-                         <div className="bg-slate-50 rounded-xl p-3 border space-y-2 min-h-[60px]">
-                            {taskForm.logs?.length === 0 ? <div className="text-slate-300 text-xs text-center py-2">尚無紀錄</div> : taskForm.logs?.map(log => (
-                               <div key={log.id} className="flex gap-2 text-sm border-b pb-1 last:border-0"><span className="text-blue-500 font-bold">{log.time}</span><span className="text-slate-700 flex-1">{log.content}</span><button onClick={()=>setTaskForm(p=>({...p, logs:p.logs.filter(l=>l.id!==log.id)}))} className="text-slate-300"><i className="fas fa-times"></i></button></div>
-                            ))}
-                         </div>
-                         <div className="flex gap-2">
-                            <input className="input-ios bg-white flex-1 h-10 text-sm" value={newLogInput} onChange={e=>setNewLogInput(e.target.value)} placeholder="新增進度日誌..." onKeyPress={e=>e.key==='Enter' && addLogEntry()} />
-                            <button onClick={addLogEntry} className="bg-slate-800 text-white px-4 rounded-lg text-sm font-bold">送出</button>
-                         </div>
-                      </div>
-                      <div className="relative">
-                         {taskForm.imageUrl && <div className="relative rounded-xl overflow-hidden mb-2 border border-slate-200"><img src={taskForm.imageUrl} onClick={() => setPreviewImage(taskForm.imageUrl)} className="w-full max-h-40 object-cover cursor-zoom-in" /><button onClick={()=>setTaskForm({...taskForm, imageUrl:""})} className="absolute top-2 right-2 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center backdrop-blur-sm"><i className="fas fa-times text-xs"></i></button></div>}
-                         <button onClick={()=>taskImageInputRef.current.click()} className="w-full h-12 rounded-xl border-2 border-dashed flex items-center justify-center gap-2 text-slate-400 bg-slate-50 text-sm font-bold"><i className="fas fa-camera"></i> {taskForm.imageUrl ? "換圖" : "上傳附件"}</button>
-                         <input type="file" ref={taskImageInputRef} className="hidden" accept="image/*" onChange={async(e)=>{ if(e.target.files[0]) setTaskForm({...taskForm, imageUrl: await compressImage(e.target.files[0])}) }} />
-                      </div>
-                   </div>
-                   <button onClick={handleTaskSubmit} className="w-full bg-slate-900 text-white font-bold h-12 rounded-xl mt-4 shadow-lg active:scale-95">儲存任務</button>
-                </div>
-             </div>
-          )}
-
-          {previewImage && (
-             <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4" onClick={() => setPreviewImage(null)}>
-                <img src={previewImage} className="max-w-full max-h-full object-contain" />
-                <button className="absolute top-10 right-10 text-white text-3xl"><i className="fas fa-times"></i></button>
-             </div>
-          )}
-        </div>
-      );
-    }
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(<App />);
-  </script>
-</body>
-</html>
-
-<button 
-  onClick={handleBatchDeleteByDate} 
-  disabled={processing}
-  className="w-full text-left px-4 py-3 text-red-500 font-bold flex items-center gap-3"
->
-  <i className="fas fa-trash-alt w-6"></i> 批量刪除紀錄
-</button>
+                           <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-

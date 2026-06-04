@@ -540,6 +540,40 @@
               for (const r of recJson) {
                   await userRef.collection("records").add({ ...r, createdAt: r.createdAt || new Date().toISOString() });
               }
+
+            const handleBatchDeleteByDate = async () => {
+    const startDate = prompt("請輸入開始日期 (YYYY-MM-DD)：");
+    const endDate = prompt("請輸入結束日期 (YYYY-MM-DD)：");
+    
+    if (!startDate || !endDate) return;
+    
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    // 篩選出日期區間內的紀錄
+    const targets = records.filter(r => {
+      const d = new Date(r.date);
+      return d >= start && d <= end;
+    });
+
+    if (targets.length === 0) return alert("該區間內無紀錄");
+    
+    if (confirm(`確定要刪除 ${targets.length} 筆紀錄嗎？此動作無法復原。`)) {
+      setProcessing(true);
+      try {
+        const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records");
+        const batch = db.batch(); 
+        targets.forEach(r => batch.delete(userRef.doc(r.id)));
+        await batch.commit();
+        alert("刪除成功！");
+        window.location.reload(); // 刪除後重整頁面以更新列表
+      } catch (e) {
+        alert("刪除失敗：" + e.message);
+      } finally {
+        setProcessing(false);
+      }
+    }
+  };
               alert("匯入完成"); window.location.reload();
           };
           reader.readAsBinaryString(file);
@@ -876,3 +910,11 @@
   </script>
 </body>
 </html>
+
+<button 
+  onClick={handleBatchDeleteByDate} 
+  disabled={processing}
+  className="w-full text-left px-4 py-3 text-red-500 font-bold flex items-center gap-3"
+>
+  <i className="fas fa-trash-alt w-6"></i> 批量刪除紀錄
+</button>

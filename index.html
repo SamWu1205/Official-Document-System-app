@@ -4,15 +4,20 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>業務管理系統 Pro v1.2</title>
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- XLSX - from cdnjs (Cloudflare, extremely reliable) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- React 18 - switched from unpkg to jsDelivr (750+ PoPs, 99.99% SLA) -->
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Firebase - from Google CDN (same as before) -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <!-- Font Awesome - from cdnjs (same as before) -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Babel standalone REMOVED - JSX now pre-compiled to plain JavaScript -->
 
   <style>
     * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
@@ -46,1002 +51,1166 @@
 <body>
   <div id="root"></div>
 
-  <script type="text/babel" data-presets="env,react">
-    const firebaseConfig = {
-      apiKey: "AIzaSyAHLUkaGRW7j7ZHFaTEJMKNbkMzZm218w4",
-      authDomain: "official-document-system-239ab.firebaseapp.com",
-      projectId: "official-document-system-239ab",
-      storageBucket: "official-document-system-239ab.firebasestorage.app",
-      messagingSenderId: "285835980582",
-      appId: "1:285835980582:web:feb116841184884f685be7"
+  <!-- Pre-compiled JavaScript (no Babel required) -->
+  <script>
+"use strict";
+var __assign = (this && this.__assign) || function () {
+    __assign = Object.assign || function(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+                t[p] = s[p];
+        }
+        return t;
     };
-    const CURRENT_APP_ID = "dispatch-system-pro-v1";
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.firestore();
-    const { useState, useEffect, useMemo, useRef, memo } = React;
-
-    const formatDateTime = (isoStr) => {
-       if (!isoStr) return "";
-       const date = new Date(isoStr);
-       return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
-    };
-    const getCurrentDateTimeISO = () => {
-        const now = new Date();
-        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-        return now.toISOString().slice(0, 16);
-    };
-    const getTodayLocalDateString = () => {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    };
-
-    const compressImage = (file, maxWidth = 1000) => {
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = (e) => {
-                const img = new Image(); img.src = e.target.result;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    let w = img.width, h = img.height;
-                    if (w > maxWidth) { h = (maxWidth / w) * h; w = maxWidth; }
-                    canvas.width = w; canvas.height = h;
-                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                    resolve(canvas.toDataURL('image/jpeg', 0.8));
-                };
-            };
-        });
-    };
-
-    const LoginScreen = () => {
-      const [isRegister, setIsRegister] = useState(false);
-      const [email, setEmail] = useState("");
-      const [password, setPassword] = useState("");
-      const handleAuth = async (e) => {
-        e.preventDefault();
-        try {
-          if (isRegister) await auth.createUserWithEmailAndPassword(email, password);
-          else await auth.signInWithEmailAndPassword(email, password);
-        } catch (err) { alert(err.message); }
-      };
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-          <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm text-center fade-in">
-            <h1 className="text-2xl font-bold mb-6 text-slate-800">業務管理系統</h1>
-            <form onSubmit={handleAuth} className="space-y-4">
-               <input type="email" required className="input-ios" placeholder="帳號 (Email)" value={email} onChange={e=>setEmail(e.target.value)} />
-               <input type="password" required className="input-ios" placeholder="密碼" value={password} onChange={e=>setPassword(e.target.value)} />
-               <button type="submit" className="w-full bg-slate-900 text-white h-12 rounded-xl font-bold">{isRegister ? "註冊" : "登入"}</button>
-            </form>
-            <button onClick={()=>setIsRegister(!isRegister)} className="mt-4 text-sm text-blue-600 font-bold underline">{isRegister ? "已有帳號？返回登入" : "建立新帳號"}</button>
-          </div>
-        </div>
-      );
-    };
-
-    const RecordItem = memo(({ r, onSelect, onDelete, isBatchMode, isSelected, onToggleSelect }) => {
-      const copyToClipboard = (e) => {
-         e.stopPropagation();
-         const date = new Date(r.date);
-         const dateText = `${date.getMonth() + 1}/${date.getDate()}`;
-         const numSuffix = r.number ? String(r.number).slice(-3) : "000";
-         const subSuffix = (r.docType !== '一般公文' && r.subNumber) ? `(${r.subNumber}號)` : '';
-         const text = `${dateText}${r.code || ''}${numSuffix}號${subSuffix}：${r.subject}`;
-         if (navigator.clipboard && window.isSecureContext) {
-             navigator.clipboard.writeText(text).then(() => alert("已複製：\n" + text)).catch(err => console.error('複製失敗', err));
-         } else {
-             const textArea = document.createElement("textarea");
-             textArea.value = text; document.body.appendChild(textArea);
-             textArea.select();
-             try { document.execCommand('copy'); alert("已複製：\n" + text); } catch (err) { console.error('複製失敗', err); }
-             document.body.removeChild(textArea);
-         }
-      };
-
-      return (
-        <div onClick={() => isBatchMode ? onToggleSelect(r.id) : onSelect(r)} className={`bg-white p-4 rounded-2xl border ${isSelected ? 'border-blue-400 bg-blue-50' : 'border-slate-100'} shadow-sm active:bg-slate-50 transition cursor-pointer relative flex items-center gap-3`}>
-           {isBatchMode && (
-               <div className="flex-shrink-0">
-                   <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-slate-300'}`}>
-                       {isSelected && <i className="fas fa-check text-white text-[10px]"></i>}
-                   </div>
-               </div>
-           )}
-           <div className="flex-1 min-w-0">
-               <div className="flex justify-between items-start mb-1">
-                  <div className="flex items-center gap-2">
-                     <span className="font-mono font-bold text-blue-600 text-lg">#{r.number}</span>
-                     {r.docType !== '一般公文' && r.subNumber && <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold font-mono">分號: {r.subNumber}</span>}
-                  </div>
-                  <div className="text-xs text-slate-400">{r.date?.replace(/-/g, '/')}</div>
-               </div>
-               <div className="text-base font-bold text-slate-800 mb-2 line-clamp-1">{r.subject}</div>
-               <div className="flex items-center gap-2 text-xs text-slate-500">
-                   <span className="bg-slate-100 px-2 py-1 rounded font-medium">{r.author}</span>
-                   <span className={`px-2 py-1 rounded font-bold ${r.docType === '一般公文' ? 'bg-slate-100 text-slate-700' : 'bg-indigo-50 text-indigo-600'}`}>{r.docType} {(r.rank && r.docType !== '一般公文') ? `(${r.rank})` : ''}</span>
-                   {!isBatchMode && (
-                       <div className="ml-auto flex gap-2">
-                           <button onClick={copyToClipboard} className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded"><i className="fas fa-copy"></i></button>
-                           <button onClick={(e) => { e.stopPropagation(); onDelete(r.id); }} className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 rounded"><i className="fas fa-trash-alt"></i></button>
-                       </div>
-                   )}
-               </div>
-           </div>
-        </div>
-      );
+    return __assign.apply(this, arguments);
+};
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
-
-    const TaskItem = memo(({ t, onClick, onCloseCase, onDelete }) => {
-        const [translateX, setTranslateX] = useState(0);
-        const [isMoving, setIsMoving] = useState(false);
-        const startX = useRef(0);
-        const currentX = useRef(0);
-        const latestLog = t.logs && t.logs.length > 0 ? t.logs[t.logs.length - 1] : null;
-        const isOverdue = !t.completed && new Date(t.endDate) < new Date();
-
-        // 雙向手勢觸發
-        const onTouchStart = (e) => {
-            setIsMoving(true);
-            startX.current = e.touches[0].clientX - currentX.current;
-        };
-        
-        const onTouchMove = (e) => {
-            const diff = e.touches[0].clientX - startX.current;
-            // 限制最大側滑極限範圍值，維持好操作特性
-            if (diff < 110 && diff > -110) {
-                // 如果已完成案件，限制其不允許右滑彈出辦結
-                if(t.completed && diff > 0) return;
-                setTranslateX(diff);
-                currentX.current = diff;
+};
+var __generator = (this && this.__generator) || function (thisArg, body) {
+    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
+    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    function verb(n) { return function (v) { return step([n, v]); }; }
+    function step(op) {
+        if (f) throw new TypeError("Generator is already executing.");
+        while (g && (g = 0, op[0] && (_ = 0)), _) try {
+            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+            if (y = 0, t) op = [op[0] & 2, t.value];
+            switch (op[0]) {
+                case 0: case 1: t = op; break;
+                case 4: _.label++; return { value: op[1], done: false };
+                case 5: _.label++; y = op[1]; op = [0]; continue;
+                case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                default:
+                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                    if (t[2]) _.ops.pop();
+                    _.trys.pop(); continue;
             }
+            op = body.call(thisArg, _);
+        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+    }
+};
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
+var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
+    if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+        if (ar || !(i in from)) {
+            if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+            ar[i] = from[i];
+        }
+    }
+    return to.concat(ar || Array.prototype.slice.call(from));
+};
+var firebaseConfig = {
+    apiKey: "AIzaSyAHLUkaGRW7j7ZHFaTEJMKNbkMzZm218w4",
+    authDomain: "official-document-system-239ab.firebaseapp.com",
+    projectId: "official-document-system-239ab",
+    storageBucket: "official-document-system-239ab.firebasestorage.app",
+    messagingSenderId: "285835980582",
+    appId: "1:285835980582:web:feb116841184884f685be7"
+};
+var CURRENT_APP_ID = "dispatch-system-pro-v1";
+if (!firebase.apps.length)
+    firebase.initializeApp(firebaseConfig);
+var auth = firebase.auth();
+var db = firebase.firestore();
+var useState = React.useState, useEffect = React.useEffect, useMemo = React.useMemo, useRef = React.useRef, memo = React.memo;
+var formatDateTime = function (isoStr) {
+    if (!isoStr)
+        return "";
+    var date = new Date(isoStr);
+    return "".concat(date.getMonth() + 1, "/").concat(date.getDate(), " ").concat(String(date.getHours()).padStart(2, '0'), ":").concat(String(date.getMinutes()).padStart(2, '0'));
+};
+var getCurrentDateTimeISO = function () {
+    var now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().slice(0, 16);
+};
+var getTodayLocalDateString = function () {
+    var now = new Date();
+    var year = now.getFullYear();
+    var month = String(now.getMonth() + 1).padStart(2, '0');
+    var day = String(now.getDate()).padStart(2, '0');
+    return "".concat(year, "-").concat(month, "-").concat(day);
+};
+var compressImage = function (file, maxWidth) {
+    if (maxWidth === void 0) { maxWidth = 1000; }
+    return new Promise(function (resolve) {
+        var reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = function (e) {
+            var img = new Image();
+            img.src = e.target.result;
+            img.onload = function () {
+                var canvas = document.createElement('canvas');
+                var w = img.width, h = img.height;
+                if (w > maxWidth) {
+                    h = (maxWidth / w) * h;
+                    w = maxWidth;
+                }
+                canvas.width = w;
+                canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                resolve(canvas.toDataURL('image/jpeg', 0.8));
+            };
         };
-        
-        const onTouchEnd = () => {
-            setIsMoving(false);
-            if (currentX.current < -45) {
-                // 確定滑開左側 (彈出右邊刪除鍵)
-                setTranslateX(-85);
-                currentX.current = -85;
-            } else if (currentX.current > 45 && !t.completed) {
-                // 確定滑開右側 (彈出左邊辦結鍵)
-                setTranslateX(85);
-                currentX.current = 85;
-            } else {
-                // 未過安全邊界值，一律強制回彈置中歸零
-                setTranslateX(0);
-                currentX.current = 0;
+    });
+};
+var LoginScreen = function () {
+    var _a = useState(false), isRegister = _a[0], setIsRegister = _a[1];
+    var _b = useState(""), email = _b[0], setEmail = _b[1];
+    var _c = useState(""), password = _c[0], setPassword = _c[1];
+    var handleAuth = function (e) { return __awaiter(void 0, void 0, void 0, function () {
+        var err_1;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    e.preventDefault();
+                    _a.label = 1;
+                case 1:
+                    _a.trys.push([1, 6, , 7]);
+                    if (!isRegister) return [3 /*break*/, 3];
+                    return [4 /*yield*/, auth.createUserWithEmailAndPassword(email, password)];
+                case 2:
+                    _a.sent();
+                    return [3 /*break*/, 5];
+                case 3: return [4 /*yield*/, auth.signInWithEmailAndPassword(email, password)];
+                case 4:
+                    _a.sent();
+                    _a.label = 5;
+                case 5: return [3 /*break*/, 7];
+                case 6:
+                    err_1 = _a.sent();
+                    alert(err_1.message);
+                    return [3 /*break*/, 7];
+                case 7: return [2 /*return*/];
             }
-        };
-
-        // 處置完畢後重置置中
-        const resetItem = () => {
+        });
+    }); };
+    return (React.createElement("div", { className: "min-h-screen flex items-center justify-center bg-slate-100 p-4" },
+        React.createElement("div", { className: "bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm text-center fade-in" },
+            React.createElement("h1", { className: "text-2xl font-bold mb-6 text-slate-800" }, "\u696D\u52D9\u7BA1\u7406\u7CFB\u7D71"),
+            React.createElement("form", { onSubmit: handleAuth, className: "space-y-4" },
+                React.createElement("input", { type: "email", required: true, className: "input-ios", placeholder: "\u5E33\u865F (Email)", value: email, onChange: function (e) { return setEmail(e.target.value); } }),
+                React.createElement("input", { type: "password", required: true, className: "input-ios", placeholder: "\u5BC6\u78BC", value: password, onChange: function (e) { return setPassword(e.target.value); } }),
+                React.createElement("button", { type: "submit", className: "w-full bg-slate-900 text-white h-12 rounded-xl font-bold" }, isRegister ? "註冊" : "登入")),
+            React.createElement("button", { onClick: function () { return setIsRegister(!isRegister); }, className: "mt-4 text-sm text-blue-600 font-bold underline" }, isRegister ? "已有帳號？返回登入" : "建立新帳號"))));
+};
+var RecordItem = memo(function (_a) {
+    var _b;
+    var r = _a.r, onSelect = _a.onSelect, onDelete = _a.onDelete, isBatchMode = _a.isBatchMode, isSelected = _a.isSelected, onToggleSelect = _a.onToggleSelect;
+    var copyToClipboard = function (e) {
+        e.stopPropagation();
+        var date = new Date(r.date);
+        var dateText = "".concat(date.getMonth() + 1, "/").concat(date.getDate());
+        var numSuffix = r.number ? String(r.number).slice(-3) : "000";
+        var subSuffix = (r.docType !== '一般公文' && r.subNumber) ? "(".concat(r.subNumber, "\u865F)") : '';
+        var text = "".concat(dateText).concat(r.code || '').concat(numSuffix, "\u865F").concat(subSuffix, "\uFF1A").concat(r.subject);
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).then(function () { return alert("已複製：\n" + text); }).catch(function (err) { return console.error('複製失敗', err); });
+        }
+        else {
+            var textArea = document.createElement("textarea");
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                alert("已複製：\n" + text);
+            }
+            catch (err) {
+                console.error('複製失敗', err);
+            }
+            document.body.removeChild(textArea);
+        }
+    };
+    return (React.createElement("div", { onClick: function () { return isBatchMode ? onToggleSelect(r.id) : onSelect(r); }, className: "bg-white p-4 rounded-2xl border ".concat(isSelected ? 'border-blue-400 bg-blue-50' : 'border-slate-100', " shadow-sm active:bg-slate-50 transition cursor-pointer relative flex items-center gap-3") },
+        isBatchMode && (React.createElement("div", { className: "flex-shrink-0" },
+            React.createElement("div", { className: "w-5 h-5 rounded-full border-2 flex items-center justify-center ".concat(isSelected ? 'bg-blue-500 border-blue-500' : 'border-slate-300') }, isSelected && React.createElement("i", { className: "fas fa-check text-white text-[10px]" })))),
+        React.createElement("div", { className: "flex-1 min-w-0" },
+            React.createElement("div", { className: "flex justify-between items-start mb-1" },
+                React.createElement("div", { className: "flex items-center gap-2" },
+                    React.createElement("span", { className: "font-mono font-bold text-blue-600 text-lg" },
+                        "#",
+                        r.number),
+                    r.docType !== '一般公文' && r.subNumber && React.createElement("span", { className: "text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold font-mono" },
+                        "\u5206\u865F: ",
+                        r.subNumber)),
+                React.createElement("div", { className: "text-xs text-slate-400" }, (_b = r.date) === null || _b === void 0 ? void 0 : _b.replace(/-/g, '/'))),
+            React.createElement("div", { className: "text-base font-bold text-slate-800 mb-2 line-clamp-1" }, r.subject),
+            React.createElement("div", { className: "flex items-center gap-2 text-xs text-slate-500" },
+                React.createElement("span", { className: "bg-slate-100 px-2 py-1 rounded font-medium" }, r.author),
+                React.createElement("span", { className: "px-2 py-1 rounded font-bold ".concat(r.docType === '一般公文' ? 'bg-slate-100 text-slate-700' : 'bg-indigo-50 text-indigo-600') },
+                    r.docType,
+                    " ",
+                    (r.rank && r.docType !== '一般公文') ? "(".concat(r.rank, ")") : ''),
+                !isBatchMode && (React.createElement("div", { className: "ml-auto flex gap-2" },
+                    React.createElement("button", { onClick: copyToClipboard, className: "w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded" },
+                        React.createElement("i", { className: "fas fa-copy" })),
+                    React.createElement("button", { onClick: function (e) { e.stopPropagation(); onDelete(r.id); }, className: "w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 rounded" },
+                        React.createElement("i", { className: "fas fa-trash-alt" }))))))));
+});
+var TaskItem = memo(function (_a) {
+    var t = _a.t, onClick = _a.onClick, onCloseCase = _a.onCloseCase, onDelete = _a.onDelete;
+    var _b = useState(0), translateX = _b[0], setTranslateX = _b[1];
+    var _c = useState(false), isMoving = _c[0], setIsMoving = _c[1];
+    var startX = useRef(0);
+    var currentX = useRef(0);
+    var latestLog = t.logs && t.logs.length > 0 ? t.logs[t.logs.length - 1] : null;
+    var isOverdue = !t.completed && new Date(t.endDate) < new Date();
+    // 雙向手勢觸發
+    var onTouchStart = function (e) {
+        setIsMoving(true);
+        startX.current = e.touches[0].clientX - currentX.current;
+    };
+    var onTouchMove = function (e) {
+        var diff = e.touches[0].clientX - startX.current;
+        // 限制最大側滑極限範圍值，維持好操作特性
+        if (diff < 110 && diff > -110) {
+            // 如果已完成案件，限制其不允許右滑彈出辦結
+            if (t.completed && diff > 0)
+                return;
+            setTranslateX(diff);
+            currentX.current = diff;
+        }
+    };
+    var onTouchEnd = function () {
+        setIsMoving(false);
+        if (currentX.current < -45) {
+            // 確定滑開左側 (彈出右邊刪除鍵)
+            setTranslateX(-85);
+            currentX.current = -85;
+        }
+        else if (currentX.current > 45 && !t.completed) {
+            // 確定滑開右側 (彈出左邊辦結鍵)
+            setTranslateX(85);
+            currentX.current = 85;
+        }
+        else {
+            // 未過安全邊界值，一律強制回彈置中歸零
             setTranslateX(0);
             currentX.current = 0;
-        };
-
-        return (
-           <div className="relative rounded-2xl overflow-hidden mb-3 bg-slate-100 h-[88px]">
-              
-              {/* 底層左邊：右滑彈出的辦結操作區 */}
-              {!t.completed && (
-                <div className="absolute inset-y-0 left-0 bg-emerald-500 flex items-center pl-6 z-0 w-[100px]">
-                    <button onClick={(e) => { e.stopPropagation(); resetItem(); onCloseCase(t.id); }} className="text-white font-bold text-xs flex flex-col items-center justify-center w-full h-full">
-                       <i className="fas fa-check-circle mb-1 text-lg"></i>辦結
-                    </button>
-                </div>
-              )}
-
-              {/* 底層右邊：左滑彈出的刪除操作區 */}
-              <div className="absolute inset-y-0 right-0 bg-red-500 flex items-center justify-end pr-6 z-0 w-[100px]">
-                  <button onClick={(e) => { e.stopPropagation(); resetItem(); onDelete(e, t.id); }} className="text-white font-bold text-xs flex flex-col items-center justify-center w-full h-full">
-                     <i className="fas fa-trash-alt mb-1 text-lg"></i>刪除
-                  </button>
-              </div>
-
-              {/* 最上層浮動本體資訊卡片卡塊 */}
-              <div onClick={() => { if(currentX.current !== 0) { resetItem(); } else { onClick(t); } }} 
-                 onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
-                 style={{ 
-                    transform: `translateX(${translateX}px)`, 
-                    transition: isMoving ? 'none' : 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)' 
-                 }}
-                 className={`${t.completed ? "bg-slate-50 opacity-75" : "bg-white"} h-full w-full rounded-2xl p-4 shadow-sm border border-slate-100 absolute z-10 top-0 left-0 flex items-center justify-between transition-transform`}>
-                  <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${t.completed ? 'bg-slate-300' : (isOverdue ? 'bg-red-500' : 'bg-blue-500')}`}></div>
-                  <div className="flex-1 min-w-0 pl-2">
-                     <div>
-                        <div className="flex items-center gap-2 mb-1">
-                           <h3 className={`font-bold text-slate-800 text-base line-clamp-1 ${t.completed?'line-through text-slate-400':''}`}>{t.title}</h3>
-                           {t.imageUrl && <i className="fas fa-image text-slate-400 text-sm"></i>}
-                        </div>
-                        <div className="text-[11px] text-slate-500 space-y-0.5">
-                           <div className="truncate">委託人：{t.delegator} | {t.type}</div>
-                           {latestLog && <div className="text-slate-400 italic truncate max-w-[220px]">日誌：{latestLog.content}</div>}
-                           <div className={`font-bold ${isOverdue ? 'text-red-500' : ''}`}>
-                              {t.completed ? `辦結：${formatDateTime(t.completedAt)}` : `期限：${formatDateTime(t.endDate)}`}
-                           </div>
-                        </div>
-                     </div>
-                  </div>
-                  
-                  <div className="flex-shrink-0 ml-2 flex items-center gap-1.5">
-                     {t.remindDate && !t.completed && <i className="fas fa-clock text-blue-400 text-xs"></i>}
-                     {isOverdue && (
-                        <div className="text-red-500 text-base p-1 animate-wobble-bell">
-                           <i className="fas fa-bell"></i>
-                        </div>
-                     )}
-                  </div>
-              </div>
-           </div>
-        );
-    });
-
-    function App() {
-      const [user, setUser] = useState(null);
-      const [loadingAuth, setLoadingAuth] = useState(true);
-      const [menuOpen, setMenuOpen] = useState(false);
-      const [currentView, setCurrentView] = useState("home");
-      const [records, setRecords] = useState([]);
-      const [tasks, setTasks] = useState([]);
-      const [meta, setMeta] = useState({ authors: [], codes: [], authorDefaults: {}, taskTypes: ['行政', '訓練', '後勤', '人事', '其他'], autoExport: { enabled: false, period: 'weekly', email: '' } });
-      const [processing, setProcessing] = useState(false);
-
-      const getInitialForm = () => ({ id: null, date: getTodayLocalDateString(), author: "", code: "", number: "", subject: "", docType: "一般公文", rank: "軍官", subNumber: "" });
-      const [form, setForm] = useState(getInitialForm());
-      const [isManualNumber, setIsManualNumber] = useState(false);
-      
-      const [filter, setFilter] = useState({ type: 'all', value: '', docType: 'all', rank: 'all' });
-      const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
-      const [isBatchMode, setIsBatchMode] = useState(false);
-      const [selectedRecordIds, setSelectedRecordIds] = useState(new Set());
-
-      const [delStartDate, setDelStartDate] = useState(getTodayLocalDateString());
-      const [delEndDate, setDelEndDate] = useState(getTodayLocalDateString());
-
-      const notifiedTaskIds = useRef(new Set());
-
-      useEffect(() => {
-        if (currentView === "home") {
-          setForm(prev => ({ ...prev, date: getTodayLocalDateString() }));
         }
-      }, [currentView]);
-
-      useEffect(() => {
-        if (!user || tasks.length === 0) return;
-
-        if (Notification.permission === "default") {
-          Notification.requestPermission();
-        }
-
-        const checkCustomReminders = () => {
-          if (Notification.permission !== "granted") return;
-          const now = new Date();
-
-          tasks.forEach(t => {
-            if (t.completed || !t.remindDate) return;
-            
-            const remindTime = new Date(t.remindDate);
-            if (now >= remindTime && (now - remindTime < 3600000) && !notifiedTaskIds.current.has(t.id)) {
-              new Notification("⏰ 管制案件設定時間提醒", {
-                body: `您設定的任務提醒時間已到：\n【${t.title}】\n請確認辦理進度。`,
-                icon: "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/svgs/solid/bell.svg"
-              });
-              notifiedTaskIds.current.add(t.id);
+    };
+    // 處置完畢後重置置中
+    var resetItem = function () {
+        setTranslateX(0);
+        currentX.current = 0;
+    };
+    return (React.createElement("div", { className: "relative rounded-2xl overflow-hidden mb-3 bg-slate-100 h-[88px]" },
+        !t.completed && (React.createElement("div", { className: "absolute inset-y-0 left-0 bg-emerald-500 flex items-center pl-6 z-0 w-[100px]" },
+            React.createElement("button", { onClick: function (e) { e.stopPropagation(); resetItem(); onCloseCase(t.id); }, className: "text-white font-bold text-xs flex flex-col items-center justify-center w-full h-full" },
+                React.createElement("i", { className: "fas fa-check-circle mb-1 text-lg" }),
+                "\u8FA6\u7D50"))),
+        React.createElement("div", { className: "absolute inset-y-0 right-0 bg-red-500 flex items-center justify-end pr-6 z-0 w-[100px]" },
+            React.createElement("button", { onClick: function (e) { e.stopPropagation(); resetItem(); onDelete(e, t.id); }, className: "text-white font-bold text-xs flex flex-col items-center justify-center w-full h-full" },
+                React.createElement("i", { className: "fas fa-trash-alt mb-1 text-lg" }),
+                "\u522A\u9664")),
+        React.createElement("div", { onClick: function () { if (currentX.current !== 0) {
+                resetItem();
             }
-          });
-        };
-
-        checkCustomReminders();
-        const intervalId = setInterval(checkCustomReminders, 30000);
-        return () => clearInterval(intervalId);
-      }, [tasks, user]);
-
-      const handleBatchCopy = () => {
-          if (selectedRecordIds.size === 0) return alert("請先選擇要複製的紀錄");
-          const selected = sortedRecords.filter(r => selectedRecordIds.has(r.id));
-          
-          const textToCopy = selected.map(r => {
-              const date = new Date(r.date);
-              const dateText = `${date.getMonth() + 1}/${date.getDate()}`;
-              const numSuffix = r.number ? String(r.number).slice(-3) : "000";
-              const subSuffix = (r.docType !== '一般公文' && r.subNumber) ? `(${r.subNumber}號)` : '';
-              return `${dateText}${r.code || ''}${numSuffix}號${subSuffix}：${r.subject}`;
-          }).join('\n');
-
-          const doCopy = (text) => {
-              setIsBatchMode(false);
-              setSelectedRecordIds(new Set());
-              alert(`已成功複製 ${selected.length} 筆紀錄：\n\n${text}`);
-          };
-          if (navigator.clipboard && window.isSecureContext) {
-              navigator.clipboard.writeText(textToCopy).then(() => doCopy(textToCopy)).catch(err => { console.error('複製失敗', err); alert('複製失敗，請稍後再試'); });
-          } else {
-              const textArea = document.createElement("textarea");
-              textArea.value = textToCopy;
-              document.body.appendChild(textArea);
-              textArea.select();
-              try {
-                  document.execCommand('copy');
-                  doCopy(textToCopy);
-              } catch (err) {
-                  console.error('複製失敗', err);
-                  alert('複製失敗，請稍後再試');
-              }
-              document.body.removeChild(textArea);
-          }
-      };
-
-      const [showTaskModal, setShowTaskModal] = useState(false);
-      const [taskForm, setTaskForm] = useState({ id: null, title: "", type: "行政", delegator: "", priority: "一般", startDate: getCurrentDateTimeISO(), endDate: getCurrentDateTimeISO(), remindDate: "", logs: [], imageUrl: "" });
-      const [newLogInput, setNewLogInput] = useState("");
-      const [taskTab, setTaskTab] = useState("active");
-      const [taskSearch, setTaskSearch] = useState("");
-      const [previewImage, setPreviewImage] = useState(null);
-      const [editingSubId, setEditingSubId] = useState(null);
-      const [editSubVal, setEditSubVal] = useState("");
-      
-      const [docTab, setDocTab] = useState("人勤令");
-      const [docRankTab, setDocRankTab] = useState("軍官");
-
-      const [newAuthor, setNewAuthor] = useState("");
-      const [newTaskType, setNewTaskType] = useState("");
-      const [editingAuthorDefault, setEditingAuthorDefault] = useState(null);
-      
-      const [exportEnabled, setExportEnabled] = useState(false);
-      const [exportPeriod, setExportPeriod] = useState("weekly");
-      const [exportEmail, setExportEmail] = useState("");
-
-      const fileInputRef = useRef(null);
-      const taskImageInputRef = useRef(null);
-
-      useEffect(() => auth.onAuthStateChanged(u => { setUser(u); setLoadingAuth(false); }), []);
-
-      useEffect(() => {
-        if (!user) return;
-        const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-        const unsubRec = userRef.collection("records").orderBy("createdAt", "desc").limit(1000).onSnapshot(s => setRecords(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-        const unsubTask = userRef.collection("tasks").orderBy("createdAt", "desc").onSnapshot(s => setTasks(s.docs.map(d => ({ id: d.id, ...d.data() }))));
-        const unsubMeta = userRef.collection("metadata").doc("general").onSnapshot(doc => { 
-            if(doc.exists) {
-                const data = doc.data();
-                setMeta(prev => ({...prev, ...data}));
-                if (data.autoExport) {
-                    setExportEnabled(data.autoExport.enabled || false);
-                    setExportPeriod(data.autoExport.period || 'weekly');
-                    setExportEmail(data.autoExport.email || '');
+            else {
+                onClick(t);
+            } }, onTouchStart: onTouchStart, onTouchMove: onTouchMove, onTouchEnd: onTouchEnd, style: {
+                transform: "translateX(".concat(translateX, "px)"),
+                transition: isMoving ? 'none' : 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)'
+            }, className: "".concat(t.completed ? "bg-slate-50 opacity-75" : "bg-white", " h-full w-full rounded-2xl p-4 shadow-sm border border-slate-100 absolute z-10 top-0 left-0 flex items-center justify-between transition-transform") },
+            React.createElement("div", { className: "absolute left-0 top-0 bottom-0 w-1.5 ".concat(t.completed ? 'bg-slate-300' : (isOverdue ? 'bg-red-500' : 'bg-blue-500')) }),
+            React.createElement("div", { className: "flex-1 min-w-0 pl-2" },
+                React.createElement("div", null,
+                    React.createElement("div", { className: "flex items-center gap-2 mb-1" },
+                        React.createElement("h3", { className: "font-bold text-slate-800 text-base line-clamp-1 ".concat(t.completed ? 'line-through text-slate-400' : '') }, t.title),
+                        t.imageUrl && React.createElement("i", { className: "fas fa-image text-slate-400 text-sm" })),
+                    React.createElement("div", { className: "text-[11px] text-slate-500 space-y-0.5" },
+                        React.createElement("div", { className: "truncate" },
+                            "\u59D4\u8A17\u4EBA\uFF1A",
+                            t.delegator,
+                            " | ",
+                            t.type),
+                        latestLog && React.createElement("div", { className: "text-slate-400 italic truncate max-w-[220px]" },
+                            "\u65E5\u8A8C\uFF1A",
+                            latestLog.content),
+                        React.createElement("div", { className: "font-bold ".concat(isOverdue ? 'text-red-500' : '') }, t.completed ? "\u8FA6\u7D50\uFF1A".concat(formatDateTime(t.completedAt)) : "\u671F\u9650\uFF1A".concat(formatDateTime(t.endDate)))))),
+            React.createElement("div", { className: "flex-shrink-0 ml-2 flex items-center gap-1.5" },
+                t.remindDate && !t.completed && React.createElement("i", { className: "fas fa-clock text-blue-400 text-xs" }),
+                isOverdue && (React.createElement("div", { className: "text-red-500 text-base p-1 animate-wobble-bell" },
+                    React.createElement("i", { className: "fas fa-bell" })))))));
+});
+function App() {
+    var _this = this;
+    var _a, _b;
+    var _c = useState(null), user = _c[0], setUser = _c[1];
+    var _d = useState(true), loadingAuth = _d[0], setLoadingAuth = _d[1];
+    var _e = useState(false), menuOpen = _e[0], setMenuOpen = _e[1];
+    var _f = useState("home"), currentView = _f[0], setCurrentView = _f[1];
+    var _g = useState([]), records = _g[0], setRecords = _g[1];
+    var _h = useState([]), tasks = _h[0], setTasks = _h[1];
+    var _j = useState({ authors: [], codes: [], authorDefaults: {}, taskTypes: ['行政', '訓練', '後勤', '人事', '其他'], autoExport: { enabled: false, period: 'weekly', email: '' } }), meta = _j[0], setMeta = _j[1];
+    var _k = useState(false), processing = _k[0], setProcessing = _k[1];
+    var getInitialForm = function () { return ({ id: null, date: getTodayLocalDateString(), author: "", code: "", number: "", subject: "", docType: "一般公文", rank: "軍官", subNumber: "" }); };
+    var _l = useState(getInitialForm()), form = _l[0], setForm = _l[1];
+    var _m = useState(false), isManualNumber = _m[0], setIsManualNumber = _m[1];
+    var _o = useState({ type: 'all', value: '', docType: 'all', rank: 'all' }), filter = _o[0], setFilter = _o[1];
+    var _p = useState({ key: 'createdAt', direction: 'desc' }), sortConfig = _p[0], setSortConfig = _p[1];
+    var _q = useState(false), isBatchMode = _q[0], setIsBatchMode = _q[1];
+    var _r = useState(new Set()), selectedRecordIds = _r[0], setSelectedRecordIds = _r[1];
+    var _s = useState(getTodayLocalDateString()), delStartDate = _s[0], setDelStartDate = _s[1];
+    var _t = useState(getTodayLocalDateString()), delEndDate = _t[0], setDelEndDate = _t[1];
+    var notifiedTaskIds = useRef(new Set());
+    useEffect(function () {
+        if (currentView === "home") {
+            setForm(function (prev) { return (__assign(__assign({}, prev), { date: getTodayLocalDateString() })); });
+        }
+    }, [currentView]);
+    useEffect(function () {
+        if (!user || tasks.length === 0)
+            return;
+        if (Notification.permission === "default") {
+            Notification.requestPermission();
+        }
+        var checkCustomReminders = function () {
+            if (Notification.permission !== "granted")
+                return;
+            var now = new Date();
+            tasks.forEach(function (t) {
+                if (t.completed || !t.remindDate)
+                    return;
+                var remindTime = new Date(t.remindDate);
+                if (now >= remindTime && (now - remindTime < 3600000) && !notifiedTaskIds.current.has(t.id)) {
+                    new Notification("⏰ 管制案件設定時間提醒", {
+                        body: "\u60A8\u8A2D\u5B9A\u7684\u4EFB\u52D9\u63D0\u9192\u6642\u9593\u5DF2\u5230\uFF1A\n\u3010".concat(t.title, "\u3011\n\u8ACB\u78BA\u8A8D\u8FA6\u7406\u9032\u5EA6\u3002"),
+                        icon: "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/svgs/solid/bell.svg"
+                    });
+                    notifiedTaskIds.current.add(t.id);
                 }
-            } 
+            });
+        };
+        checkCustomReminders();
+        var intervalId = setInterval(checkCustomReminders, 30000);
+        return function () { return clearInterval(intervalId); };
+    }, [tasks, user]);
+    var handleBatchCopy = function () {
+        if (selectedRecordIds.size === 0)
+            return alert("請先選擇要複製的紀錄");
+        var selected = sortedRecords.filter(function (r) { return selectedRecordIds.has(r.id); });
+        var textToCopy = selected.map(function (r) {
+            var date = new Date(r.date);
+            var dateText = "".concat(date.getMonth() + 1, "/").concat(date.getDate());
+            var numSuffix = r.number ? String(r.number).slice(-3) : "000";
+            var subSuffix = (r.docType !== '一般公文' && r.subNumber) ? "(".concat(r.subNumber, "\u865F)") : '';
+            return "".concat(dateText).concat(r.code || '').concat(numSuffix, "\u865F").concat(subSuffix, "\uFF1A").concat(r.subject);
+        }).join('\n');
+        var doCopy = function (text) {
+            setIsBatchMode(false);
+            setSelectedRecordIds(new Set());
+            alert("\u5DF2\u6210\u529F\u8907\u88FD ".concat(selected.length, " \u7B46\u7D00\u9304\uFF1A\n\n").concat(text));
+        };
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(textToCopy).then(function () { return doCopy(textToCopy); }).catch(function (err) { console.error('複製失敗', err); alert('複製失敗，請稍後再試'); });
+        }
+        else {
+            var textArea = document.createElement("textarea");
+            textArea.value = textToCopy;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                doCopy(textToCopy);
+            }
+            catch (err) {
+                console.error('複製失敗', err);
+                alert('複製失敗，請稍後再試');
+            }
+            document.body.removeChild(textArea);
+        }
+    };
+    var _u = useState(false), showTaskModal = _u[0], setShowTaskModal = _u[1];
+    var _v = useState({ id: null, title: "", type: "行政", delegator: "", priority: "一般", startDate: getCurrentDateTimeISO(), endDate: getCurrentDateTimeISO(), remindDate: "", logs: [], imageUrl: "" }), taskForm = _v[0], setTaskForm = _v[1];
+    var _w = useState(""), newLogInput = _w[0], setNewLogInput = _w[1];
+    var _x = useState("active"), taskTab = _x[0], setTaskTab = _x[1];
+    var _y = useState(""), taskSearch = _y[0], setTaskSearch = _y[1];
+    var _z = useState(null), previewImage = _z[0], setPreviewImage = _z[1];
+    var _0 = useState(null), editingSubId = _0[0], setEditingSubId = _0[1];
+    var _1 = useState(""), editSubVal = _1[0], setEditSubVal = _1[1];
+    var _2 = useState("人勤令"), docTab = _2[0], setDocTab = _2[1];
+    var _3 = useState("軍官"), docRankTab = _3[0], setDocRankTab = _3[1];
+    var _4 = useState(""), newAuthor = _4[0], setNewAuthor = _4[1];
+    var _5 = useState(""), newTaskType = _5[0], setNewTaskType = _5[1];
+    var _6 = useState(null), editingAuthorDefault = _6[0], setEditingAuthorDefault = _6[1];
+    var _7 = useState(false), exportEnabled = _7[0], setExportEnabled = _7[1];
+    var _8 = useState("weekly"), exportPeriod = _8[0], setExportPeriod = _8[1];
+    var _9 = useState(""), exportEmail = _9[0], setExportEmail = _9[1];
+    var fileInputRef = useRef(null);
+    var taskImageInputRef = useRef(null);
+    useEffect(function () { return auth.onAuthStateChanged(function (u) { setUser(u); setLoadingAuth(false); }); }, []);
+    useEffect(function () {
+        if (!user)
+            return;
+        var userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
+        var unsubRec = userRef.collection("records").orderBy("createdAt", "desc").limit(1000).onSnapshot(function (s) { return setRecords(s.docs.map(function (d) { return (__assign({ id: d.id }, d.data())); })); });
+        var unsubTask = userRef.collection("tasks").orderBy("createdAt", "desc").onSnapshot(function (s) { return setTasks(s.docs.map(function (d) { return (__assign({ id: d.id }, d.data())); })); });
+        var unsubMeta = userRef.collection("metadata").doc("general").onSnapshot(function (doc) {
+            if (doc.exists) {
+                var data_1 = doc.data();
+                setMeta(function (prev) { return (__assign(__assign({}, prev), data_1)); });
+                if (data_1.autoExport) {
+                    setExportEnabled(data_1.autoExport.enabled || false);
+                    setExportPeriod(data_1.autoExport.period || 'weekly');
+                    setExportEmail(data_1.autoExport.email || '');
+                }
+            }
         });
-        return () => { unsubRec(); unsubTask(); unsubMeta(); };
-      }, [user]);
-
-      const nextNumbers = useMemo(() => {
-        const today = new Date(); const prefix = String(today.getFullYear() - 1911);
-        const mainNums = records.map(r => r.number).filter(n => n && String(n).startsWith(prefix)).map(n => parseInt(n, 10)).filter(n => !Number.isNaN(n));
-        return { main: mainNums.length === 0 ? prefix + "0000001" : String(Math.max(...mainNums) + 1) };
-      }, [records]);
-
-      useEffect(() => {
-        if (!form.id && !isManualNumber) setForm(prev => ({ ...prev, number: nextNumbers.main }));
-      }, [nextNumbers, form.id, isManualNumber]);
-
-      useEffect(() => {
+        return function () { unsubRec(); unsubTask(); unsubMeta(); };
+    }, [user]);
+    var nextNumbers = useMemo(function () {
+        var today = new Date();
+        var prefix = String(today.getFullYear() - 1911);
+        var mainNums = records.map(function (r) { return r.number; }).filter(function (n) { return n && String(n).startsWith(prefix); }).map(function (n) { return parseInt(n, 10); }).filter(function (n) { return !Number.isNaN(n); });
+        return { main: mainNums.length === 0 ? prefix + "0000001" : String(Math.max.apply(Math, mainNums) + 1) };
+    }, [records]);
+    useEffect(function () {
+        if (!form.id && !isManualNumber)
+            setForm(function (prev) { return (__assign(__assign({}, prev), { number: nextNumbers.main })); });
+    }, [nextNumbers, form.id, isManualNumber]);
+    useEffect(function () {
         if (!form.id && form.docType !== '一般公文') {
-            const currentTypeRecords = records.filter(r => r.docType === form.docType && r.rank === form.rank);
-            const subNums = currentTypeRecords.map(r => parseInt(r.subNumber, 10)).filter(n => !isNaN(n));
-            const nextSub = subNums.length > 0 ? Math.max(...subNums) + 1 : 1;
-            setForm(prev => ({ ...prev, subNumber: String(nextSub) }));
-        } else if (!form.id && form.docType === '一般公文') {
-            setForm(prev => ({ ...prev, subNumber: "" }));
+            var currentTypeRecords = records.filter(function (r) { return r.docType === form.docType && r.rank === form.rank; });
+            var subNums = currentTypeRecords.map(function (r) { return parseInt(r.subNumber, 10); }).filter(function (n) { return !isNaN(n); });
+            var nextSub_1 = subNums.length > 0 ? Math.max.apply(Math, subNums) + 1 : 1;
+            setForm(function (prev) { return (__assign(__assign({}, prev), { subNumber: String(nextSub_1) })); });
         }
-      }, [form.docType, form.rank, records, form.id]);
-
-      const handleAuthorChange = (val) => {
-        setForm(prev => {
-          const newForm = { ...prev, author: val };
-          if (meta.authorDefaults && meta.authorDefaults[val]) {
-            newForm.code = meta.authorDefaults[val];
-          }
-          return newForm;
+        else if (!form.id && form.docType === '一般公文') {
+            setForm(function (prev) { return (__assign(__assign({}, prev), { subNumber: "" })); });
+        }
+    }, [form.docType, form.rank, records, form.id]);
+    var handleAuthorChange = function (val) {
+        setForm(function (prev) {
+            var newForm = __assign(__assign({}, prev), { author: val });
+            if (meta.authorDefaults && meta.authorDefaults[val]) {
+                newForm.code = meta.authorDefaults[val];
+            }
+            return newForm;
         });
-      };
-
-      const sortedRecords = useMemo(() => {
-        let sortable = [...records];
-        
-        if(filter.type === 'search' && filter.value) {
-            sortable = sortable.filter(r => r.subject.includes(filter.value) || r.number.includes(filter.value));
+    };
+    var sortedRecords = useMemo(function () {
+        var sortable = __spreadArray([], records, true);
+        if (filter.type === 'search' && filter.value) {
+            sortable = sortable.filter(function (r) { return r.subject.includes(filter.value) || r.number.includes(filter.value); });
         }
-        if(filter.docType !== 'all') {
-            sortable = sortable.filter(r => r.docType === filter.docType);
+        if (filter.docType !== 'all') {
+            sortable = sortable.filter(function (r) { return r.docType === filter.docType; });
         }
-        if(filter.rank !== 'all') {
-            sortable = sortable.filter(r => r.rank === filter.rank);
+        if (filter.rank !== 'all') {
+            sortable = sortable.filter(function (r) { return r.rank === filter.rank; });
         }
-
-        sortable.sort((a, b) => {
-            let valA = a[sortConfig.key];
-            let valB = b[sortConfig.key];
+        sortable.sort(function (a, b) {
+            var valA = a[sortConfig.key];
+            var valB = b[sortConfig.key];
             if (sortConfig.key === 'number' || sortConfig.key === 'subNumber') {
                 valA = parseInt(valA || "0", 10);
                 valB = parseInt(valB || "0", 10);
             }
-            if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
-            if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+            if (valA < valB)
+                return sortConfig.direction === 'asc' ? -1 : 1;
+            if (valA > valB)
+                return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
         return sortable;
-      }, [records, filter, sortConfig]);
-
-      const handleSort = (key) => {
-        setSortConfig(prev => ({
-            key,
+    }, [records, filter, sortConfig]);
+    var handleSort = function (key) {
+        setSortConfig(function (prev) { return ({
+            key: key,
             direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
-        }));
-      };
-
-      const sortedDocsRecords = useMemo(() => {
-          let docs = records.filter(r => r.docType === docTab && r.rank === docRankTab);
-          docs.sort((a, b) => {
-              const subA = parseInt(a.subNumber || "0", 10);
-              const subB = parseInt(b.subNumber || "0", 10);
-              return subB - subA;
-          });
-          return docs;
-      }, [records, docTab, docRankTab]);
-
-      const handleDocSubmit = async (forceNew = false) => {
-        if (!user || !form.author || !form.subject) return alert("資料不完整");
-        
-        const subjects = form.subject.split('\n').map(s => s.trim()).filter(s => s);
-        if (subjects.length === 0) return alert("請輸入主旨");
-
-        setProcessing(true);
-        try {
-          const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-          
-          if (form.id && !forceNew && subjects.length === 1) {
-              const isDuplicateMain = records.some(r => r.number === form.number && r.id !== form.id);
-              if (isDuplicateMain) return alert(`總號 ${form.number} 已存在！`);
-              
-              if (form.docType !== '一般公文' && form.subNumber) {
-                  const isDuplicateSub = records.some(r => r.docType === form.docType && r.rank === form.rank && String(r.subNumber) === String(form.subNumber) && r.id !== form.id);
-                  if (isDuplicateSub) return alert(`${form.docType} (${form.rank}) 分號 ${form.subNumber} 已存在！`);
-              }
-
-              const payload = { ...form, subject: subjects[0], updatedAt: new Date().toISOString() };
-              const docId = form.id; delete payload.id;
-              await userRef.collection("records").doc(docId).set(payload, { merge: true });
-          } 
-          else {
-              let currentMainNum = parseInt(isManualNumber ? form.number : nextNumbers.main, 10);
-              let currentSubNum = form.docType !== '一般公文' && form.subNumber ? parseInt(form.subNumber, 10) : null;
-
-              for (let i = 0; i < subjects.length; i++) {
-                  const targetMainStr = String(currentMainNum);
-                  const targetSubStr = currentSubNum !== null ? String(currentSubNum) : "";
-
-                  if (records.some(r => r.number === targetMainStr && r.id !== form.id)) {
-                      alert(`總號 ${targetMainStr} 已存在，批次建檔中斷於第 ${i+1} 筆！`);
-                      break;
-                  }
-                  
-                  if (form.docType !== '一般公文' && targetSubStr) {
-                      if (records.some(r => r.docType === form.docType && r.rank === form.rank && String(r.subNumber) === targetSubStr && r.id !== form.id)) {
-                          alert(`${form.docType} (${form.rank}) 分號 ${targetSubStr} 已存在，批次建檔中斷於第 ${i+1} 筆！`);
-                          break;
-                      }
-                  }
-
-                  const payload = { 
-                      ...form, 
-                      subject: subjects[i],
-                      number: targetMainStr,
-                      subNumber: targetSubStr,
-                      createdAt: new Date().toISOString(),
-                      updatedAt: new Date().toISOString() 
-                  };
-                  delete payload.id;
-
-                  await userRef.collection("records").add(payload);
-
-                  currentMainNum++;
-                  if (currentSubNum !== null) currentSubNum++;
-              }
-          }
-          
-          if(form.code && !meta.codes.includes(form.code)) {
-            await updateSettings({ codes: [...meta.codes, form.code] });
-          }
-          
-          setForm({ 
-              ...getInitialForm(),
-              date: getTodayLocalDateString(),
-              author: form.author, 
-              code: form.code 
-          });
-          setIsManualNumber(false); 
-          setFilter({type:'all',value:'',docType:'all',rank:'all'});
-          
-        } catch (e) { alert(e.message); } finally { setProcessing(false); }
-      };
-
-      const handleTaskSubmit = async () => {
-         if(!taskForm.title) return alert("請輸入名稱");
-         setProcessing(true);
-         try {
-            const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks");
-            const payload = { ...taskForm, updatedAt: new Date().toISOString() };
-            const id = payload.id; delete payload.id;
-            
-            if (id) {
-               await userRef.doc(id).update(payload);
-               notifiedTaskIds.current.delete(id);
-            } else {
-               payload.createdAt = new Date().toISOString(); 
-               await userRef.add(payload); 
-            }
-            setShowTaskModal(false);
-         } catch(e) { alert("儲存失敗"); } finally { setProcessing(false); }
-      };
-
-      const addLogEntry = () => {
-         if(!newLogInput.trim()) return;
-         const now = new Date();
-         const logTime = `${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-         setTaskForm(prev => ({ ...prev, logs: [...(prev.logs||[]), { id: Date.now(), time: logTime, content: newLogInput.trim() }] }));
-         setNewLogInput("");
-      };
-
-      const updateSettings = async (newData) => {
-         await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").set(newData, { merge: true });
-      };
-
-      const handleSaveAutoExport = async () => {
-         if (exportEnabled && !exportEmail) return alert("請輸入指定的通知信箱");
-         setProcessing(true);
-         try {
-             await updateSettings({
-                 autoExport: {
-                     enabled: exportEnabled,
-                     period: exportPeriod,
-                     email: exportEmail
-                 }
-             });
-             alert("自動匯出設定更新成功！\n(系統將於雲端背景固定週期備份並傳送至指定信箱)");
-         } catch (e) { alert("設定失敗"); } finally { setProcessing(false); }
-      };
-
-      const saveAuthorDefault = async (authorName, defaultCode) => {
-         const newDefaults = { ...(meta.authorDefaults || {}), [authorName]: defaultCode };
-         await updateSettings({ authorDefaults: newDefaults });
-         setEditingAuthorDefault(null);
-      };
-
-      const handleExport = () => {
-          try {
-              const wb = XLSX.utils.book_new();
-              const exportRecords = records.length > 0 ?
-                  records.map(r => ({ ...r })) : [{ "提示": "目前無發文紀錄" }];
-              const exportTasks = tasks.length > 0 ? 
-                  tasks.map(t => {
-                      const { imageUrl, logs, ...rest } = t;
-                      return {
-                          ...rest,
-                          logs: logs && logs.length > 0 ? logs.map(l => `[${l.time}] ${l.content}`).join('\n') : "無"
-                      };
-                  }) : [{ "提示": "目前無工作管制紀錄" }];
-
-              XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exportRecords), "發文紀錄");
-              XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exportTasks), "工作管制");
-              XLSX.writeFile(wb, `備份_${new Date().toISOString().slice(0,10)}.xlsx`);
-          } catch (error) {
-              console.error("匯出失敗：", error);
-              alert(`匯出失敗：${error.message}\n\n※ 若您在 LINE 或 APP 內開啟，請點擊右上角改用 Safari / Chrome 瀏覽器開啟即可正常下載。`);
-          }
-      };
-
-      const handleBatchDeleteByDateAction = async () => {
-        if (!delStartDate || !delEndDate) return alert("請選定完整的開始與結束日期");
-        const start = new Date(delStartDate + "T00:00:00");
-        const end = new Date(delEndDate + "T23:59:59");
-        
-        const targets = records.filter(r => {
-          const d = new Date(r.date);
-          return d >= start && d <= end;
+        }); });
+    };
+    var sortedDocsRecords = useMemo(function () {
+        var docs = records.filter(function (r) { return r.docType === docTab && r.rank === docRankTab; });
+        docs.sort(function (a, b) {
+            var subA = parseInt(a.subNumber || "0", 10);
+            var subB = parseInt(b.subNumber || "0", 10);
+            return subB - subA;
         });
-        
-        if (targets.length === 0) return alert("該指定區間內查無任何發文紀錄");
-        if (confirm(`⚠️ 警告：確定要刪除此區間內共 ${targets.length} 筆發文紀錄嗎？此動作將無法復原。`)) {
-          setProcessing(true);
-          try {
-            const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records");
-            const batch = db.batch();
-            targets.forEach(r => batch.delete(userRef.doc(r.id)));
-            await batch.commit();
-            alert("✨ 批次資料刪除成功！");
-          } catch (e) {
-            alert("刪除失敗：" + e.message);
-          } finally {
-            setProcessing(false);
-          }
+        return docs;
+    }, [records, docTab, docRankTab]);
+    var handleDocSubmit = function () {
+        var args_1 = [];
+        for (var _i = 0; _i < arguments.length; _i++) {
+            args_1[_i] = arguments[_i];
         }
-      };
-      
-      const handleImport = (e) => {
-          const file = e.target.files[0];
-          if(!file) return;
-          const reader = new FileReader();
-          reader.onload = async (evt) => {
-              const data = XLSX.read(evt.target.result, {type: 'binary'});
-              const recJson = XLSX.utils.sheet_to_json(data.Sheets["發文紀錄"]);
-              const userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-              for (const r of recJson) {
-                  await userRef.collection("records").add({ ...r, createdAt: r.createdAt || new Date().toISOString() });
-              }
-              alert("匯入完成"); window.location.reload();
-          };
-          reader.readAsBinaryString(file);
-      };
+        return __awaiter(_this, __spreadArray([], args_1, true), void 0, function (forceNew) {
+            var subjects, userRef, isDuplicateMain, isDuplicateSub, payload, docId, currentMainNum, currentSubNum, _loop_1, i, state_1, e_1;
+            if (forceNew === void 0) { forceNew = false; }
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        if (!user || !form.author || !form.subject)
+                            return [2 /*return*/, alert("資料不完整")];
+                        subjects = form.subject.split('\n').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+                        if (subjects.length === 0)
+                            return [2 /*return*/, alert("請輸入主旨")];
+                        setProcessing(true);
+                        _a.label = 1;
+                    case 1:
+                        _a.trys.push([1, 10, 11, 12]);
+                        userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
+                        if (!(form.id && !forceNew && subjects.length === 1)) return [3 /*break*/, 3];
+                        isDuplicateMain = records.some(function (r) { return r.number === form.number && r.id !== form.id; });
+                        if (isDuplicateMain)
+                            return [2 /*return*/, alert("\u7E3D\u865F ".concat(form.number, " \u5DF2\u5B58\u5728\uFF01"))];
+                        if (form.docType !== '一般公文' && form.subNumber) {
+                            isDuplicateSub = records.some(function (r) { return r.docType === form.docType && r.rank === form.rank && String(r.subNumber) === String(form.subNumber) && r.id !== form.id; });
+                            if (isDuplicateSub)
+                                return [2 /*return*/, alert("".concat(form.docType, " (").concat(form.rank, ") \u5206\u865F ").concat(form.subNumber, " \u5DF2\u5B58\u5728\uFF01"))];
+                        }
+                        payload = __assign(__assign({}, form), { subject: subjects[0], updatedAt: new Date().toISOString() });
+                        docId = form.id;
+                        delete payload.id;
+                        return [4 /*yield*/, userRef.collection("records").doc(docId).set(payload, { merge: true })];
+                    case 2:
+                        _a.sent();
+                        return [3 /*break*/, 7];
+                    case 3:
+                        currentMainNum = parseInt(isManualNumber ? form.number : nextNumbers.main, 10);
+                        currentSubNum = form.docType !== '一般公文' && form.subNumber ? parseInt(form.subNumber, 10) : null;
+                        _loop_1 = function (i) {
+                            var targetMainStr, targetSubStr, payload;
+                            return __generator(this, function (_b) {
+                                switch (_b.label) {
+                                    case 0:
+                                        targetMainStr = String(currentMainNum);
+                                        targetSubStr = currentSubNum !== null ? String(currentSubNum) : "";
+                                        if (records.some(function (r) { return r.number === targetMainStr && r.id !== form.id; })) {
+                                            alert("\u7E3D\u865F ".concat(targetMainStr, " \u5DF2\u5B58\u5728\uFF0C\u6279\u6B21\u5EFA\u6A94\u4E2D\u65B7\u65BC\u7B2C ").concat(i + 1, " \u7B46\uFF01"));
+                                            return [2 /*return*/, "break"];
+                                        }
+                                        if (form.docType !== '一般公文' && targetSubStr) {
+                                            if (records.some(function (r) { return r.docType === form.docType && r.rank === form.rank && String(r.subNumber) === targetSubStr && r.id !== form.id; })) {
+                                                alert("".concat(form.docType, " (").concat(form.rank, ") \u5206\u865F ").concat(targetSubStr, " \u5DF2\u5B58\u5728\uFF0C\u6279\u6B21\u5EFA\u6A94\u4E2D\u65B7\u65BC\u7B2C ").concat(i + 1, " \u7B46\uFF01"));
+                                                return [2 /*return*/, "break"];
+                                            }
+                                        }
+                                        payload = __assign(__assign({}, form), { subject: subjects[i], number: targetMainStr, subNumber: targetSubStr, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+                                        delete payload.id;
+                                        return [4 /*yield*/, userRef.collection("records").add(payload)];
+                                    case 1:
+                                        _b.sent();
+                                        currentMainNum++;
+                                        if (currentSubNum !== null)
+                                            currentSubNum++;
+                                        return [2 /*return*/];
+                                }
+                            });
+                        };
+                        i = 0;
+                        _a.label = 4;
+                    case 4:
+                        if (!(i < subjects.length)) return [3 /*break*/, 7];
+                        return [5 /*yield**/, _loop_1(i)];
+                    case 5:
+                        state_1 = _a.sent();
+                        if (state_1 === "break")
+                            return [3 /*break*/, 7];
+                        _a.label = 6;
+                    case 6:
+                        i++;
+                        return [3 /*break*/, 4];
+                    case 7:
+                        if (!(form.code && !meta.codes.includes(form.code))) return [3 /*break*/, 9];
+                        return [4 /*yield*/, updateSettings({ codes: __spreadArray(__spreadArray([], meta.codes, true), [form.code], false) })];
+                    case 8:
+                        _a.sent();
+                        _a.label = 9;
+                    case 9:
+                        setForm(__assign(__assign({}, getInitialForm()), { date: getTodayLocalDateString(), author: form.author, code: form.code }));
+                        setIsManualNumber(false);
+                        setFilter({ type: 'all', value: '', docType: 'all', rank: 'all' });
+                        return [3 /*break*/, 12];
+                    case 10:
+                        e_1 = _a.sent();
+                        alert(e_1.message);
+                        return [3 /*break*/, 12];
+                    case 11:
+                        setProcessing(false);
+                        return [7 /*endfinally*/];
+                    case 12: return [2 /*return*/];
+                }
+            });
+        });
+    };
+    var handleTaskSubmit = function () { return __awaiter(_this, void 0, void 0, function () {
+        var userRef, payload, id, e_2;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    if (!taskForm.title)
+                        return [2 /*return*/, alert("請輸入名稱")];
+                    setProcessing(true);
+                    _a.label = 1;
+                case 1:
+                    _a.trys.push([1, 6, 7, 8]);
+                    userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks");
+                    payload = __assign(__assign({}, taskForm), { updatedAt: new Date().toISOString() });
+                    id = payload.id;
+                    delete payload.id;
+                    if (!id) return [3 /*break*/, 3];
+                    return [4 /*yield*/, userRef.doc(id).update(payload)];
+                case 2:
+                    _a.sent();
+                    notifiedTaskIds.current.delete(id);
+                    return [3 /*break*/, 5];
+                case 3:
+                    payload.createdAt = new Date().toISOString();
+                    return [4 /*yield*/, userRef.add(payload)];
+                case 4:
+                    _a.sent();
+                    _a.label = 5;
+                case 5:
+                    setShowTaskModal(false);
+                    return [3 /*break*/, 8];
+                case 6:
+                    e_2 = _a.sent();
+                    alert("儲存失敗");
+                    return [3 /*break*/, 8];
+                case 7:
+                    setProcessing(false);
+                    return [7 /*endfinally*/];
+                case 8: return [2 /*return*/];
+            }
+        });
+    }); };
+    var addLogEntry = function () {
+        if (!newLogInput.trim())
+            return;
+        var now = new Date();
+        var logTime = "".concat(now.getMonth() + 1, "/").concat(now.getDate(), " ").concat(String(now.getHours()).padStart(2, '0'), ":").concat(String(now.getMinutes()).padStart(2, '0'));
+        setTaskForm(function (prev) { return (__assign(__assign({}, prev), { logs: __spreadArray(__spreadArray([], (prev.logs || []), true), [{ id: Date.now(), time: logTime, content: newLogInput.trim() }], false) })); });
+        setNewLogInput("");
+    };
+    var updateSettings = function (newData) { return __awaiter(_this, void 0, void 0, function () {
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0: return [4 /*yield*/, db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("metadata").doc("general").set(newData, { merge: true })];
+                case 1:
+                    _a.sent();
+                    return [2 /*return*/];
+            }
+        });
+    }); };
+    var handleSaveAutoExport = function () { return __awaiter(_this, void 0, void 0, function () {
+        var e_3;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    if (exportEnabled && !exportEmail)
+                        return [2 /*return*/, alert("請輸入指定的通知信箱")];
+                    setProcessing(true);
+                    _a.label = 1;
+                case 1:
+                    _a.trys.push([1, 3, 4, 5]);
+                    return [4 /*yield*/, updateSettings({
+                            autoExport: {
+                                enabled: exportEnabled,
+                                period: exportPeriod,
+                                email: exportEmail
+                            }
+                        })];
+                case 2:
+                    _a.sent();
+                    alert("自動匯出設定更新成功！\n(系統將於雲端背景固定週期備份並傳送至指定信箱)");
+                    return [3 /*break*/, 5];
+                case 3:
+                    e_3 = _a.sent();
+                    alert("設定失敗");
+                    return [3 /*break*/, 5];
+                case 4:
+                    setProcessing(false);
+                    return [7 /*endfinally*/];
+                case 5: return [2 /*return*/];
+            }
+        });
+    }); };
+    var saveAuthorDefault = function (authorName, defaultCode) { return __awaiter(_this, void 0, void 0, function () {
+        var newDefaults;
+        var _a;
+        return __generator(this, function (_b) {
+            switch (_b.label) {
+                case 0:
+                    newDefaults = __assign(__assign({}, (meta.authorDefaults || {})), (_a = {}, _a[authorName] = defaultCode, _a));
+                    return [4 /*yield*/, updateSettings({ authorDefaults: newDefaults })];
+                case 1:
+                    _b.sent();
+                    setEditingAuthorDefault(null);
+                    return [2 /*return*/];
+            }
+        });
+    }); };
+    var handleExport = function () {
+        try {
+            var wb = XLSX.utils.book_new();
+            var exportRecords = records.length > 0 ?
+                records.map(function (r) { return (__assign({}, r)); }) : [{ "提示": "目前無發文紀錄" }];
+            var exportTasks = tasks.length > 0 ?
+                tasks.map(function (t) {
+                    var imageUrl = t.imageUrl, logs = t.logs, rest = __rest(t, ["imageUrl", "logs"]);
+                    return __assign(__assign({}, rest), { logs: logs && logs.length > 0 ? logs.map(function (l) { return "[".concat(l.time, "] ").concat(l.content); }).join('\n') : "無" });
+                }) : [{ "提示": "目前無工作管制紀錄" }];
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exportRecords), "發文紀錄");
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exportTasks), "工作管制");
+            XLSX.writeFile(wb, "\u5099\u4EFD_".concat(new Date().toISOString().slice(0, 10), ".xlsx"));
+        }
+        catch (error) {
+            console.error("匯出失敗：", error);
+            alert("\u532F\u51FA\u5931\u6557\uFF1A".concat(error.message, "\n\n\u203B \u82E5\u60A8\u5728 LINE \u6216 APP \u5167\u958B\u555F\uFF0C\u8ACB\u9EDE\u64CA\u53F3\u4E0A\u89D2\u6539\u7528 Safari / Chrome \u700F\u89BD\u5668\u958B\u555F\u5373\u53EF\u6B63\u5E38\u4E0B\u8F09\u3002"));
+        }
+    };
+    var handleBatchDeleteByDateAction = function () { return __awaiter(_this, void 0, void 0, function () {
+        var start, end, targets, userRef_1, batch_1, e_4;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    if (!delStartDate || !delEndDate)
+                        return [2 /*return*/, alert("請選定完整的開始與結束日期")];
+                    start = new Date(delStartDate + "T00:00:00");
+                    end = new Date(delEndDate + "T23:59:59");
+                    targets = records.filter(function (r) {
+                        var d = new Date(r.date);
+                        return d >= start && d <= end;
+                    });
+                    if (targets.length === 0)
+                        return [2 /*return*/, alert("該指定區間內查無任何發文紀錄")];
+                    if (!confirm("\u26A0\uFE0F \u8B66\u544A\uFF1A\u78BA\u5B9A\u8981\u522A\u9664\u6B64\u5340\u9593\u5167\u5171 ".concat(targets.length, " \u7B46\u767C\u6587\u7D00\u9304\u55CE\uFF1F\u6B64\u52D5\u4F5C\u5C07\u7121\u6CD5\u5FA9\u539F\u3002"))) return [3 /*break*/, 5];
+                    setProcessing(true);
+                    _a.label = 1;
+                case 1:
+                    _a.trys.push([1, 3, 4, 5]);
+                    userRef_1 = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records");
+                    batch_1 = db.batch();
+                    targets.forEach(function (r) { return batch_1.delete(userRef_1.doc(r.id)); });
+                    return [4 /*yield*/, batch_1.commit()];
+                case 2:
+                    _a.sent();
+                    alert("✨ 批次資料刪除成功！");
+                    return [3 /*break*/, 5];
+                case 3:
+                    e_4 = _a.sent();
+                    alert("刪除失敗：" + e_4.message);
+                    return [3 /*break*/, 5];
+                case 4:
+                    setProcessing(false);
+                    return [7 /*endfinally*/];
+                case 5: return [2 /*return*/];
+            }
+        });
+    }); };
+    var handleImport = function (e) {
+        var file = e.target.files[0];
+        if (!file)
+            return;
+        var reader = new FileReader();
+        reader.onload = function (evt) { return __awaiter(_this, void 0, void 0, function () {
+            var data, recJson, userRef, _i, recJson_1, r;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        data = XLSX.read(evt.target.result, { type: 'binary' });
+                        recJson = XLSX.utils.sheet_to_json(data.Sheets["發文紀錄"]);
+                        userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
+                        _i = 0, recJson_1 = recJson;
+                        _a.label = 1;
+                    case 1:
+                        if (!(_i < recJson_1.length)) return [3 /*break*/, 4];
+                        r = recJson_1[_i];
+                        return [4 /*yield*/, userRef.collection("records").add(__assign(__assign({}, r), { createdAt: r.createdAt || new Date().toISOString() }))];
+                    case 2:
+                        _a.sent();
+                        _a.label = 3;
+                    case 3:
+                        _i++;
+                        return [3 /*break*/, 1];
+                    case 4:
+                        alert("匯入完成");
+                        window.location.reload();
+                        return [2 /*return*/];
+                }
+            });
+        }); };
+        reader.readAsBinaryString(file);
+    };
+    if (loadingAuth)
+        return React.createElement("div", { className: "h-screen flex items-center justify-center text-slate-400" }, "\u8F09\u5165\u4E2D...");
+    if (!user)
+        return React.createElement(LoginScreen, null);
+    return (React.createElement("div", { className: "min-h-screen flex flex-col bg-slate-50 pb-20 bg-dot-pattern" },
+        menuOpen && React.createElement("div", { className: "fixed inset-0 bg-black/30 z-40 backdrop-blur-sm", onClick: function () { return setMenuOpen(false); } }),
+        React.createElement("div", { className: "fixed inset-y-0 left-0 w-[280px] bg-white shadow-2xl z-50 sidebar flex flex-col ".concat(menuOpen ? 'sidebar-open' : 'sidebar-closed') },
+            React.createElement("div", { className: "bg-slate-900 text-white p-8 pt-12" },
+                React.createElement("h2", { className: "font-bold text-xl" }, "\u696D\u52D9\u7BA1\u7406"),
+                React.createElement("div", { className: "text-slate-400 text-xs mt-1 truncate" }, user.email)),
+            React.createElement("div", { className: "p-4 space-y-2 flex-1" },
+                [{ id: 'home', l: '發文填寫', i: 'fa-pen-nib' }, { id: 'docs', l: '公文系統', i: 'fa-folder-open' }, { id: 'tasks', l: '工作管制', i: 'fa-tasks' }, { id: 'personnel', l: '系統設定', i: 'fa-cogs' }].map(function (item) { return (React.createElement("button", { key: item.id, onClick: function () { setCurrentView(item.id); setMenuOpen(false); }, className: "w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 ".concat(currentView === item.id ? 'bg-blue-50 text-blue-600' : 'text-slate-600') },
+                    React.createElement("i", { className: "fas ".concat(item.i, " w-6") }),
+                    item.l)); }),
+                React.createElement("div", { className: "border-t pt-2 mt-4 space-y-2" },
+                    React.createElement("button", { onClick: handleExport, className: "w-full text-left px-4 py-3 text-slate-600 font-bold flex items-center gap-3" },
+                        React.createElement("i", { className: "fas fa-file-export w-6" }),
+                        "Excel \u532F\u51FA"),
+                    React.createElement("button", { onClick: function () { return fileInputRef.current.click(); }, className: "w-full text-left px-4 py-3 text-slate-600 font-bold flex items-center gap-3" },
+                        React.createElement("i", { className: "fas fa-file-import w-6" }),
+                        "Excel \u532F\u5165"),
+                    React.createElement("input", { type: "file", ref: fileInputRef, className: "hidden", accept: ".xlsx,.xls", onChange: handleImport }))),
+            React.createElement("div", { className: "p-4 border-t" },
+                React.createElement("button", { onClick: function () { return auth.signOut(); }, className: "w-full text-left px-4 py-3 text-red-500 font-bold" },
+                    React.createElement("i", { className: "fas fa-sign-out-alt mr-2" }),
+                    "\u767B\u51FA"))),
+        React.createElement("header", { className: "sticky top-0 z-30 bg-white shadow-sm px-4 h-14 flex items-center gap-4" },
+            React.createElement("button", { onClick: function () { return setMenuOpen(true); }, className: "text-slate-700 text-xl p-1" },
+                React.createElement("i", { className: "fas fa-bars" })),
+            React.createElement("h1", { className: "font-bold text-lg text-slate-800" }, { home: '發文填寫', docs: '公文系統', tasks: '工作管制', personnel: '系統設定' }[currentView])),
+        currentView === 'home' && (React.createElement("main", { className: "p-4 space-y-4 max-w-md mx-auto fade-in" },
+            React.createElement("div", { className: "bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4" },
+                React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+                    React.createElement("div", { className: "space-y-1" },
+                        React.createElement("label", { className: "text-xs font-bold text-slate-400 ml-1" }, "\u65E5\u671F"),
+                        React.createElement("input", { type: "date", className: "input-ios", value: form.date, onChange: function (e) { return setForm(__assign(__assign({}, form), { date: e.target.value })); } })),
+                    React.createElement("div", { className: "space-y-1" },
+                        React.createElement("label", { className: "text-xs font-bold text-slate-400 ml-1" }, "\u767C\u6587\u8005"),
+                        React.createElement("select", { className: "input-ios", value: form.author, onChange: function (e) { return handleAuthorChange(e.target.value); } },
+                            React.createElement("option", { value: "", disabled: true }, "\u9078\u64C7\u767C\u6587\u8005"),
+                            meta.authors.map(function (a) { return React.createElement("option", { key: a, value: a }, a); })))),
+                React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+                    React.createElement("div", { className: "space-y-1" },
+                        React.createElement("label", { className: "text-xs font-bold text-slate-400 ml-1" }, "\u4EE3\u5B57"),
+                        React.createElement("input", { type: "text", className: "input-ios", value: form.code, onChange: function (e) { return setForm(__assign(__assign({}, form), { code: e.target.value })); }, placeholder: "\u4EE3\u5B57" })),
+                    React.createElement("div", { className: "space-y-1" },
+                        React.createElement("label", { className: "text-xs font-bold text-slate-400 ml-1" },
+                            "\u7E3D\u865F ",
+                            isManualNumber ? '(手動)' : '(自動)'),
+                        React.createElement("div", { className: "relative" },
+                            React.createElement("input", { type: "text", className: "input-ios text-right font-mono ".concat(isManualNumber ? 'border-blue-500 ring-1 ring-blue-50' : 'bg-slate-50'), readOnly: !isManualNumber, value: form.number, onChange: function (e) { return setForm(__assign(__assign({}, form), { number: e.target.value })); } }),
+                            React.createElement("button", { onClick: function () { return setIsManualNumber(!isManualNumber); }, className: "absolute left-2 top-3 ".concat(isManualNumber ? 'text-blue-500' : 'text-slate-300') },
+                                React.createElement("i", { className: "fas fa-".concat(isManualNumber ? 'unlock' : 'lock') }))))),
+                React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+                    React.createElement("div", { className: "space-y-1" },
+                        React.createElement("label", { className: "text-xs font-bold text-slate-400 ml-1" }, "\u7A2E\u985E"),
+                        React.createElement("select", { className: "input-ios", value: form.docType, onChange: function (e) { return setForm(__assign(__assign({}, form), { docType: e.target.value })); } }, ['一般公文', '人勤令', '人職令'].map(function (t) { return React.createElement("option", { key: t, value: t }, t); }))),
+                    React.createElement("div", { className: "space-y-1" },
+                        React.createElement("label", { className: "text-xs font-bold text-slate-400 ml-1" }, "\u5206\u865F / \u968E\u7D1A"),
+                        React.createElement("div", { className: "flex gap-1" },
+                            React.createElement("input", { type: "text", className: "input-ios text-center font-bold", value: form.subNumber, onChange: function (e) { return setForm(__assign(__assign({}, form), { subNumber: e.target.value })); }, placeholder: "\u5206\u865F" }),
+                            form.docType !== '一般公文' && React.createElement("select", { className: "input-ios text-xs", value: form.rank, onChange: function (e) { return setForm(__assign(__assign({}, form), { rank: e.target.value })); } }, ['軍官', '士官', '士兵'].map(function (r) { return React.createElement("option", { key: r, value: r }, r); }))))),
+                React.createElement("textarea", { className: "w-full border rounded-xl p-3 h-20 outline-none focus:border-blue-500", placeholder: "\u4E3B\u65E8\u5167\u5BB9... (\u53EF\u8CBC\u4E0A\u591A\u884C\uFF0C\u7CFB\u7D71\u5C07\u81EA\u52D5\u4F9D\u884C\u6578\u62C6\u5206\u5EFA\u6A94)", value: form.subject, onChange: function (e) { return setForm(__assign(__assign({}, form), { subject: e.target.value })); } }),
+                React.createElement("div", { className: "grid grid-cols-3 gap-2 pt-2" },
+                    React.createElement("button", { onClick: function () { var k = prompt("關鍵字查詢"); if (k)
+                            setFilter(function (prev) { return (__assign(__assign({}, prev), { type: 'search', value: k })); }); }, className: "bg-slate-100 text-slate-600 h-12 rounded-xl font-bold" }, "\u67E5\u8A62"),
+                    React.createElement("button", { onClick: function () { return handleDocSubmit(false); }, disabled: !form.id, className: "h-12 rounded-xl font-bold ".concat(form.id ? 'bg-blue-100 text-blue-600' : 'bg-slate-50 text-slate-300') }, "\u4FEE\u6539"),
+                    React.createElement("button", { onClick: function () { return handleDocSubmit(true); }, disabled: processing, className: "bg-slate-900 text-white h-12 rounded-xl font-bold shadow-lg" }, "\u767B\u9304"))),
+            React.createElement("div", { className: "bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3" },
+                React.createElement("div", { className: "text-xs font-bold text-slate-500" },
+                    React.createElement("i", { className: "fas fa-filter mr-1" }),
+                    " \u9032\u968E\u8CC7\u6599\u7BE9\u9078\u5217\u8868"),
+                React.createElement("div", { className: "grid grid-cols-2 gap-2" },
+                    React.createElement("div", null,
+                        React.createElement("label", { className: "text-[11px] text-slate-400 font-bold block mb-1" }, "\u516C\u6587\u7A2E\u985E"),
+                        React.createElement("select", { className: "w-full border text-xs h-9 rounded-lg px-2 bg-slate-50 font-bold", value: filter.docType, onChange: function (e) { return setFilter(function (prev) { return (__assign(__assign({}, prev), { docType: e.target.value })); }); } },
+                            React.createElement("option", { value: "all" }, "\u5168\u90E8\u7A2E\u985E"),
+                            React.createElement("option", { value: "\u4E00\u822C\u516C\u6587" }, "\u4E00\u822C\u516C\u6587"),
+                            React.createElement("option", { value: "\u4EBA\u52E4\u4EE4" }, "\u4EBA\u52E4\u4EE4"),
+                            React.createElement("option", { value: "\u4EBA\u8077\u4EE4" }, "\u4EBA\u8077\u4EE4"))),
+                    React.createElement("div", null,
+                        React.createElement("label", { className: "text-[11px] text-slate-400 font-bold block mb-1" }, "\u5B98\u8077\u968E\u7D1A"),
+                        React.createElement("select", { className: "w-full border text-xs h-9 rounded-lg px-2 bg-slate-50 font-bold", value: filter.rank, onChange: function (e) { return setFilter(function (prev) { return (__assign(__assign({}, prev), { rank: e.target.value })); }); }, disabled: filter.docType === '一般公文' },
+                            React.createElement("option", { value: "all" }, "\u5168\u90E8\u968E\u7D1A"),
+                            React.createElement("option", { value: "\u8ECD\u5B98" }, "\u8ECD\u5B98"),
+                            React.createElement("option", { value: "\u58EB\u5B98" }, "\u58EB\u5B98"),
+                            React.createElement("option", { value: "\u58EB\u5175" }, "\u58EB\u5175")))),
+                (filter.docType !== 'all' || filter.rank !== 'all' || filter.type === 'search') && (React.createElement("div", { className: "flex justify-end" },
+                    React.createElement("button", { onClick: function () { return setFilter({ type: 'all', value: '', docType: 'all', rank: 'all' }); }, className: "text-xs text-red-500 font-bold" },
+                        React.createElement("i", { className: "fas fa-times-circle mr-1" }),
+                        "\u91CD\u7F6E\u7BE9\u9078\u9805\u76EE")))),
+            React.createElement("div", { className: "space-y-3" },
+                React.createElement("div", { className: "flex justify-between items-center px-2" },
+                    React.createElement("div", { className: "flex items-center gap-2" },
+                        React.createElement("h2", { className: "font-bold text-slate-800" }, "\u8FD1\u671F\u7D00\u9304"),
+                        React.createElement("button", { onClick: function () { setIsBatchMode(!isBatchMode); setSelectedRecordIds(new Set()); }, className: "text-xs px-3 py-1.5 rounded-lg font-bold transition-colors ".concat(isBatchMode ? 'bg-slate-800 text-white shadow-sm' : 'bg-blue-50 text-blue-600') }, isBatchMode ? '取消選取' : '多筆複製')),
+                    isBatchMode ? (React.createElement("button", { onClick: handleBatchCopy, className: "text-xs bg-emerald-500 text-white px-3 py-1.5 rounded-lg font-bold shadow-sm active:scale-95 transition-transform" },
+                        React.createElement("i", { className: "fas fa-copy mr-1" }),
+                        " \u8907\u88FD\u52FE\u9078 (",
+                        selectedRecordIds.size,
+                        ")")) : (React.createElement("div", { className: "flex gap-1 text-[10px] bg-slate-100 p-1 rounded-lg" },
+                        React.createElement("button", { onClick: function () { return handleSort('date'); }, className: "px-2 py-1 rounded ".concat(sortConfig.key === 'date' ? 'bg-white shadow text-blue-600' : '') }, "\u65E5\u671F"),
+                        React.createElement("button", { onClick: function () { return handleSort('number'); }, className: "px-2 py-1 rounded ".concat(sortConfig.key === 'number' ? 'bg-white shadow text-blue-600' : '') }, "\u7E3D\u865F"),
+                        React.createElement("button", { onClick: function () { return handleSort('subNumber'); }, className: "px-2 py-1 rounded ".concat(sortConfig.key === 'subNumber' ? 'bg-white shadow text-blue-600' : '') }, "\u5206\u865F")))),
+                filter.type === 'search' && React.createElement("div", { className: "px-2 text-xs flex justify-between" },
+                    React.createElement("span", null,
+                        "\u95DC\u9375\u5B57\u641C\u5C0B: ",
+                        filter.value),
+                    React.createElement("button", { onClick: function () { return setFilter(function (prev) { return (__assign(__assign({}, prev), { type: 'all', value: '' })); }); }, className: "text-blue-500" }, "\u6E05\u9664")),
+                sortedRecords.map(function (r) { return (React.createElement(RecordItem, { key: r.id, r: r, onSelect: setForm, onDelete: function (id) { return confirm("刪除?") && db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete(); }, isBatchMode: isBatchMode, isSelected: selectedRecordIds.has(r.id), onToggleSelect: function (id) {
+                        var newSet = new Set(selectedRecordIds);
+                        if (newSet.has(id))
+                            newSet.delete(id);
+                        else
+                            newSet.add(id);
+                        setSelectedRecordIds(newSet);
+                    } })); })))),
+        currentView === 'docs' && (React.createElement("main", { className: "p-4 space-y-4 max-w-md mx-auto fade-in" },
+            React.createElement("div", { className: "flex bg-slate-200 p-1 rounded-xl" }, ['人勤令', '人職令'].map(function (t) { return React.createElement("button", { key: t, onClick: function () { return setDocTab(t); }, className: "flex-1 py-2 rounded-lg text-sm font-bold transition-colors ".concat(docTab === t ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500') }, t); })),
+            React.createElement("div", { className: "flex bg-slate-100 p-1 rounded-lg gap-1 border border-slate-200" }, ['軍官', '士官', '士兵'].map(function (r) { return (React.createElement("button", { key: r, onClick: function () { return setDocRankTab(r); }, className: "flex-1 py-1.5 text-xs font-bold rounded-md transition-all ".concat(docRankTab === r ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200') },
+                r,
+                "\u5206\u865F\u7D00\u9304")); })),
+            React.createElement("div", { className: "space-y-3 min-h-[200px]" }, sortedDocsRecords.length === 0 ? (React.createElement("div", { className: "flex flex-col items-center justify-center py-12 text-slate-400 bg-white rounded-2xl border border-slate-100 shadow-sm" },
+                React.createElement("i", { className: "fas fa-folder-open text-3xl mb-3 opacity-50" }),
+                React.createElement("p", { className: "text-sm font-bold" },
+                    "\u76EE\u524D\u7121 ",
+                    docTab,
+                    " (",
+                    docRankTab,
+                    ") \u7D00\u9304"))) : sortedDocsRecords.map(function (r) {
+                var _a;
+                return (React.createElement("div", { key: r.id, className: "bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex justify-between items-center" },
+                    React.createElement("div", { className: "flex-1 min-w-0 pr-2" },
+                        React.createElement("div", { className: "text-[10px] text-slate-400" }, (_a = r.date) === null || _a === void 0 ? void 0 :
+                            _a.replace(/-/g, '/'),
+                            " | ",
+                            r.author),
+                        React.createElement("h3", { className: "font-bold text-slate-800 my-1 truncate" }, r.subject),
+                        React.createElement("div", { className: "text-xs text-slate-500" },
+                            "\u7E3D\u865F: #",
+                            r.number)),
+                    React.createElement("div", { className: "text-right flex-shrink-0" },
+                        React.createElement("div", { className: "text-[10px] text-slate-400 font-bold" }, "\u5206\u865F"),
+                        editingSubId === r.id ? (React.createElement("div", { className: "flex gap-1" },
+                            React.createElement("input", { className: "w-12 border rounded text-center font-bold text-sm h-7", value: editSubVal, onChange: function (e) { return setEditSubVal(e.target.value); }, autoFocus: true }),
+                            React.createElement("button", { onClick: function () { return __awaiter(_this, void 0, void 0, function () { return __generator(this, function (_a) {
+                                    switch (_a.label) {
+                                        case 0: return [4 /*yield*/, db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(r.id).update({ subNumber: editSubVal })];
+                                        case 1:
+                                            _a.sent();
+                                            setEditingSubId(null);
+                                            return [2 /*return*/];
+                                    }
+                                }); }); }, className: "text-green-500 text-xs" },
+                                React.createElement("i", { className: "fas fa-check" })))) : (React.createElement("div", { className: "text-xl font-mono font-bold text-blue-900 cursor-pointer bg-slate-50 px-2 py-0.5 rounded border border-slate-100", onClick: function () { setEditingSubId(r.id); setEditSubVal(r.subNumber); } }, r.subNumber || "-")))));
+            })))),
+        currentView === 'tasks' && (React.createElement("main", { className: "p-4 space-y-4 max-w-md mx-auto fade-in" },
+            React.createElement("div", { className: "flex bg-slate-200 p-1 rounded-xl shadow-sm" },
+                React.createElement("button", { onClick: function () { return setTaskTab("active"); }, className: "flex-1 py-2 text-sm font-bold rounded-lg transition-all ".concat(taskTab === 'active' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500') },
+                    "\u9032\u884C\u4E2D (",
+                    tasks.filter(function (t) { return !t.completed; }).length,
+                    ")"),
+                React.createElement("button", { onClick: function () { return setTaskTab("completed"); }, className: "flex-1 py-2 text-sm font-bold rounded-lg transition-all ".concat(taskTab === 'completed' ? 'bg-white text-slate-400 shadow-sm' : 'text-slate-500') },
+                    "\u5DF2\u8FA6\u7D50 (",
+                    tasks.filter(function (t) { return t.completed; }).length,
+                    ")")),
+            React.createElement("div", { className: "relative" },
+                React.createElement("i", { className: "fas fa-search absolute left-3 top-3 text-slate-300" }),
+                React.createElement("input", { type: "text", className: "input-ios pl-10 h-10 shadow-sm border-none", placeholder: "\u641C\u5C0B\u6A19\u984C...", value: taskSearch, onChange: function (e) { return setTaskSearch(e.target.value); } })),
+            React.createElement("div", { className: "space-y-3 pb-20" }, tasks.filter(function (t) { return (taskTab === 'active' ? !t.completed : t.completed) && t.title.includes(taskSearch); }).map(function (t) { return React.createElement(TaskItem, { key: t.id, t: t, onClick: function (task) { setTaskForm(__assign(__assign({}, task), { remindDate: task.remindDate || "", logs: task.logs || [] })); setShowTaskModal(true); }, onCloseCase: function (id) { return db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).update({ completed: true, completedAt: new Date().toISOString() }); }, onDelete: function (e, id) { return confirm("確定要刪除此任務管制案件嗎？") && db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).delete(); } }); })),
+            React.createElement("button", { onClick: function () { setTaskForm({ id: null, title: "", type: "行政", delegator: "", priority: "一般", startDate: getCurrentDateTimeISO(), endDate: getCurrentDateTimeISO(), remindDate: "", logs: [], imageUrl: "" }); setShowTaskModal(true); }, className: "fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl z-20" },
+                React.createElement("i", { className: "fas fa-plus" })))),
+        currentView === 'personnel' && (React.createElement("main", { className: "p-4 space-y-6 max-w-md mx-auto fade-in" },
+            React.createElement("div", { className: "bg-white p-5 rounded-2xl shadow-sm space-y-4 border border-slate-200" },
+                React.createElement("h2", { className: "font-bold text-red-600 border-b pb-2 flex items-center gap-2" },
+                    React.createElement("i", { className: "fas fa-history" }),
+                    " \u6279\u91CF\u522A\u9664\u7BA1\u7406\u63A7\u5236\u53F0"),
+                React.createElement("p", { className: "text-xs text-slate-400 leading-relaxed" }, "\u9078\u5B9A\u7279\u5B9A\u65E5\u671F\u5340\u9593\uFF0C\u4E00\u9375\u6E05\u9664\u7CFB\u7D71\u5167\u5C0D\u61C9\u7684\u767C\u6587\u6578\u64DA\u7D00\u9304\u3002\u6B64\u52D5\u4F5C\u5177\u7834\u58DE\u6027\uFF0C\u8ACB\u8B39\u614E\u64CD\u4F5C\u3002"),
+                React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+                    React.createElement("div", { className: "space-y-1" },
+                        React.createElement("label", { className: "text-xs font-bold text-slate-500 ml-1" }, "\u8D77\u8FC4\u958B\u59CB\u65E5\u671F"),
+                        React.createElement("input", { type: "date", className: "input-ios h-10 text-sm", value: delStartDate, onChange: function (e) { return setDelStartDate(e.target.value); } })),
+                    React.createElement("div", { className: "space-y-1" },
+                        React.createElement("label", { className: "text-xs font-bold text-slate-500 ml-1" }, "\u7D42\u6B62\u622A\u6B62\u65E5\u671F"),
+                        React.createElement("input", { type: "date", className: "input-ios h-10 text-sm", value: delEndDate, onChange: function (e) { return setDelEndDate(e.target.value); } }))),
+                React.createElement("button", { onClick: handleBatchDeleteByDateAction, disabled: processing, className: "w-full bg-red-500 text-white font-bold h-11 rounded-xl text-sm shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2" },
+                    React.createElement("i", { className: "fas fa-trash-alt" }),
+                    " \u57F7\u884C\u5340\u9593\u6279\u91CF\u522A\u9664")),
+            React.createElement("div", { className: "bg-white p-5 rounded-2xl shadow-sm space-y-4 border border-slate-200" },
+                React.createElement("h2", { className: "font-bold text-slate-800 border-b pb-2 flex items-center gap-2" },
+                    React.createElement("i", { className: "fas fa-clock text-blue-500" }),
+                    "\u6392\u7A0B\u81EA\u52D5\u532F\u51FA\u5099\u4EFD\u8A2D\u5B9A"),
+                React.createElement("div", { className: "flex items-center justify-between bg-slate-50 p-3 rounded-xl" },
+                    React.createElement("span", { className: "text-sm font-bold text-slate-700" }, "\u555F\u7528\u5B9A\u671F\u4FE1\u7BB1\u81EA\u52D5\u532F\u51FA"),
+                    React.createElement("label", { className: "relative inline-flex items-center cursor-pointer" },
+                        React.createElement("input", { type: "checkbox", checked: exportEnabled, onChange: function (e) { return setExportEnabled(e.target.checked); }, className: "sr-only peer" }),
+                        React.createElement("div", { className: "w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600" }))),
+                exportEnabled && (React.createElement("div", { className: "space-y-3 fade-in" },
+                    React.createElement("div", { className: "space-y-1" },
+                        React.createElement("label", { className: "text-xs font-bold text-slate-400 ml-1" }, "\u532F\u51FA\u9031\u671F\u983B\u7387"),
+                        React.createElement("select", { className: "input-ios h-10 text-sm font-bold", value: exportPeriod, onChange: function (e) { return setExportPeriod(e.target.value); } },
+                            React.createElement("option", { value: "weekly" }, "\u6BCF\u9031\u56FA\u5B9A\u532F\u51FA (\u6BCF\u9031\u4E00)"),
+                            React.createElement("option", { value: "monthly" }, "\u6BCF\u6708\u56FA\u5B9A\u532F\u51FA (\u6BCF\u67081\u865F)"),
+                            React.createElement("option", { value: "biweekly" }, "\u6BCF\u96D9\u9031\u56FA\u5B9A\u532F\u51FA"))),
+                    React.createElement("div", { className: "space-y-1" },
+                        React.createElement("label", { className: "text-xs font-bold text-slate-400 ml-1" }, "\u6307\u5B9A\u63A5\u6536\u901A\u77E5\u4FE1\u7BB1"),
+                        React.createElement("input", { type: "email", className: "input-ios h-10 text-sm font-mono font-bold", placeholder: "example@mail.mil.tw", value: exportEmail, onChange: function (e) { return setExportEmail(e.target.value); } })))),
+                React.createElement("button", { onClick: handleSaveAutoExport, disabled: processing, className: "w-full bg-slate-900 text-white font-bold h-10 rounded-xl text-sm transition-transform active:scale-95" }, "\u5132\u5B58\u532F\u51FA\u6392\u7A0B\u8A2D\u5B9A")),
+            React.createElement("div", { className: "bg-white p-5 rounded-2xl shadow-sm space-y-4" },
+                React.createElement("h2", { className: "font-bold text-slate-800 border-b pb-2" }, "\u4EBA\u54E1\u53CA\u9810\u8A2D\u4EE3\u5B57\u8A2D\u5B9A"),
+                React.createElement("div", { className: "flex gap-2" },
+                    React.createElement("input", { className: "input-ios h-10 flex-1", placeholder: "\u8F38\u5165\u59D3\u540D...", value: newAuthor, onChange: function (e) { return setNewAuthor(e.target.value); } }),
+                    React.createElement("button", { className: "bg-blue-600 text-white px-4 rounded-xl font-bold", onClick: function () { return __awaiter(_this, void 0, void 0, function () { return __generator(this, function (_a) {
+                            switch (_a.label) {
+                                case 0:
+                                    if (!newAuthor)
+                                        return [2 /*return*/];
+                                    return [4 /*yield*/, updateSettings({ authors: __spreadArray(__spreadArray([], meta.authors, true), [newAuthor], false) })];
+                                case 1:
+                                    _a.sent();
+                                    setNewAuthor("");
+                                    return [2 /*return*/];
+                            }
+                        }); }); } }, "\u65B0\u589E")),
+                React.createElement("div", { className: "space-y-2 max-h-60 overflow-y-auto no-scrollbar" }, meta.authors.map(function (a) {
+                    var _a, _b, _c;
+                    return (React.createElement("div", { key: a, className: "flex flex-col gap-1 p-2 bg-slate-50 rounded-lg" },
+                        React.createElement("div", { className: "flex justify-between items-center" },
+                            React.createElement("span", { className: "font-bold" }, a),
+                            React.createElement("button", { className: "text-red-400", onClick: function () { return __awaiter(_this, void 0, void 0, function () { var _a; return __generator(this, function (_b) {
+                                    switch (_b.label) {
+                                        case 0:
+                                            _a = confirm("刪除?");
+                                            if (!_a) return [3 /*break*/, 2];
+                                            return [4 /*yield*/, updateSettings({ authors: meta.authors.filter(function (x) { return x !== a; }) })];
+                                        case 1:
+                                            _a = (_b.sent());
+                                            _b.label = 2;
+                                        case 2: return [2 /*return*/, _a];
+                                    }
+                                }); }); } },
+                                React.createElement("i", { className: "fas fa-trash-alt" }))),
+                        React.createElement("div", { className: "flex items-center gap-2 mt-1" },
+                            React.createElement("span", { className: "text-xs text-slate-400" }, "\u9810\u8A2D\u4EE3\u5B57:"),
+                            editingAuthorDefault === a ? (React.createElement("div", { className: "flex flex-1 gap-1" },
+                                React.createElement("input", { className: "flex-1 h-7 border rounded px-2 text-xs", list: "codeList", value: ((_a = meta.authorDefaults) === null || _a === void 0 ? void 0 : _a[a]) || "", onChange: function (e) { return saveAuthorDefault(a, e.target.value); }, onBlur: function () { return setTimeout(function () { return setEditingAuthorDefault(null); }, 200); }, autoFocus: true }),
+                                React.createElement("datalist", { id: "codeList" }, (_b = meta.codes) === null || _b === void 0 ? void 0 : _b.map(function (c) { return React.createElement("option", { key: c, value: c }); })))) : (React.createElement("div", { className: "flex flex-1 justify-between items-center cursor-pointer", onClick: function () { return setEditingAuthorDefault(a); } },
+                                React.createElement("span", { className: "text-xs font-bold text-blue-600" }, ((_c = meta.authorDefaults) === null || _c === void 0 ? void 0 : _c[a]) || "未設定"),
+                                React.createElement("i", { className: "fas fa-edit text-[10px] text-slate-300" }))))));
+                }))),
+            React.createElement("div", { className: "bg-white p-5 rounded-2xl shadow-sm space-y-4" },
+                React.createElement("h2", { className: "font-bold text-slate-800 border-b pb-2" }, "\u696D\u52D9\u5206\u985E\u8A2D\u5B9A"),
+                React.createElement("div", { className: "flex gap-2" },
+                    React.createElement("input", { className: "input-ios h-10 flex-1", placeholder: "\u8F38\u5165\u7A2E\u985E...", value: newTaskType, onChange: function (e) { return setNewTaskType(e.target.value); } }),
+                    React.createElement("button", { className: "bg-slate-800 text-white px-4 rounded-xl font-bold", onClick: function () { return __awaiter(_this, void 0, void 0, function () { return __generator(this, function (_a) {
+                            switch (_a.label) {
+                                case 0:
+                                    if (!newTaskType)
+                                        return [2 /*return*/];
+                                    return [4 /*yield*/, updateSettings({ taskTypes: __spreadArray(__spreadArray([], meta.taskTypes, true), [newTaskType], false) })];
+                                case 1:
+                                    _a.sent();
+                                    setNewTaskType("");
+                                    return [2 /*return*/];
+                            }
+                        }); }); } }, "\u65B0\u589E")),
+                React.createElement("div", { className: "flex flex-wrap gap-2" }, meta.taskTypes.map(function (t) { return (React.createElement("span", { key: t, className: "bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2" },
+                    t,
+                    " ",
+                    React.createElement("i", { className: "fas fa-times cursor-pointer", onClick: function () { return __awaiter(_this, void 0, void 0, function () { return __generator(this, function (_a) {
+                            switch (_a.label) {
+                                case 0: return [4 /*yield*/, updateSettings({ taskTypes: meta.taskTypes.filter(function (x) { return x !== t; }) })];
+                                case 1: return [2 /*return*/, _a.sent()];
+                            }
+                        }); }); } }))); }))))),
+        showTaskModal && (React.createElement("div", { className: "fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0" },
+            React.createElement("div", { className: "absolute inset-0 bg-black/40 backdrop-blur-sm", onClick: function () { return setShowTaskModal(false); } }),
+            React.createElement("div", { className: "bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 relative z-10 flex flex-col max-h-[90vh] shadow-2xl" },
+                React.createElement("div", { className: "flex justify-between items-center mb-4" },
+                    React.createElement("h2", { className: "text-xl font-bold" }, "\u4E8B\u9805\u7DE8\u8F2F"),
+                    React.createElement("button", { onClick: function () { return setShowTaskModal(false); } },
+                        React.createElement("i", { className: "fas fa-times text-xl" }))),
+                React.createElement("div", { className: "space-y-4 overflow-y-auto no-scrollbar flex-1 pb-4" },
+                    React.createElement("div", { className: "space-y-1" },
+                        React.createElement("label", { className: "text-xs font-bold text-slate-400" }, "\u4E8B\u9805\u540D\u7A31"),
+                        React.createElement("input", { className: "input-ios bg-slate-50 font-bold", value: taskForm.title, onChange: function (e) { return setTaskForm(__assign(__assign({}, taskForm), { title: e.target.value })); }, placeholder: "\u4EFB\u52D9\u5167\u5BB9..." })),
+                    React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+                        React.createElement("div", { className: "space-y-1" },
+                            React.createElement("label", { className: "text-xs font-bold text-slate-400" }, "\u7A2E\u985E"),
+                            React.createElement("select", { className: "input-ios bg-slate-50", value: taskForm.type, onChange: function (e) { return setTaskForm(__assign(__assign({}, taskForm), { type: e.target.value })); } }, meta.taskTypes.map(function (t) { return React.createElement("option", { key: t, value: t }, t); }))),
+                        React.createElement("div", { className: "space-y-1" },
+                            React.createElement("label", { className: "text-xs font-bold text-slate-400" }, "\u59D4\u8A17\u4EBA"),
+                            React.createElement("input", { className: "input-ios bg-slate-50", value: taskForm.delegator, onChange: function (e) { return setTaskForm(__assign(__assign({}, taskForm), { delegator: e.target.value })); }, placeholder: "\u59D4\u8A17\u4EBA" }))),
+                    React.createElement("div", { className: "grid grid-cols-2 gap-3" },
+                        React.createElement("div", { className: "space-y-1" },
+                            React.createElement("label", { className: "text-xs font-bold text-slate-400" }, "\u958B\u59CB\u6642\u9593"),
+                            React.createElement("input", { type: "datetime-local", className: "input-ios bg-slate-50 text-xs", value: taskForm.startDate, onChange: function (e) { return setTaskForm(__assign(__assign({}, taskForm), { startDate: e.target.value })); } })),
+                        React.createElement("div", { className: "space-y-1" },
+                            React.createElement("label", { className: "text-xs font-bold text-slate-400" }, "\u8FA6\u7406\u671F\u9650"),
+                            React.createElement("input", { type: "datetime-local", className: "input-ios text-xs ".concat(new Date(taskForm.endDate) < new Date() ? 'border-red-400' : 'bg-slate-50'), value: taskForm.endDate, onChange: function (e) { return setTaskForm(__assign(__assign({}, taskForm), { endDate: e.target.value })); } }))),
+                    React.createElement("div", { className: "space-y-1" },
+                        React.createElement("label", { className: "text-xs font-bold text-blue-600 flex items-center gap-1" },
+                            React.createElement("i", { className: "fas fa-bell animate-pulse" }),
+                            " \u81EA\u8A02\u5F48\u7A97\u63D0\u9192\u6642\u9593 (\u9078\u586B)"),
+                        React.createElement("input", { type: "datetime-local", className: "input-ios bg-blue-50/50 text-xs border-blue-200", value: taskForm.remindDate || "", onChange: function (e) { return setTaskForm(__assign(__assign({}, taskForm), { remindDate: e.target.value })); } }),
+                        React.createElement("p", { className: "text-[10px] text-slate-400 ml-1" }, "\u6642\u9593\u5230\u6642\uFF0C\u7CFB\u7D71\u5C07\u4E3B\u52D5\u900F\u904E\u700F\u89BD\u5668\u767C\u9001\u6A6B\u5E45\u5F48\u7A97\u63D0\u9192\u60A8\u3002")),
+                    React.createElement("div", { className: "space-y-2" },
+                        React.createElement("label", { className: "text-xs font-bold text-slate-500" },
+                            React.createElement("i", { className: "fas fa-history mr-1" }),
+                            " \u8FA6\u7406\u65E5\u8A8C"),
+                        React.createElement("div", { className: "bg-slate-50 rounded-xl p-3 border space-y-2 min-h-[60px]" }, ((_a = taskForm.logs) === null || _a === void 0 ? void 0 : _a.length) === 0 ? React.createElement("div", { className: "text-slate-300 text-xs text-center py-2" }, "\u5C1A\u7121\u7D00\u9304") : (_b = taskForm.logs) === null || _b === void 0 ? void 0 : _b.map(function (log) { return (React.createElement("div", { key: log.id, className: "flex gap-2 text-sm border-b pb-1 last:border-0" },
+                            React.createElement("span", { className: "text-blue-500 font-bold" }, log.time),
+                            React.createElement("span", { className: "text-slate-700 flex-1" }, log.content),
+                            React.createElement("button", { onClick: function () { return setTaskForm(function (p) { return (__assign(__assign({}, p), { logs: p.logs.filter(function (l) { return l.id !== log.id; }) })); }); }, className: "text-slate-300" },
+                                React.createElement("i", { className: "fas fa-times" })))); })),
+                        React.createElement("div", { className: "flex gap-2" },
+                            React.createElement("input", { className: "input-ios bg-white flex-1 h-10 text-sm", value: newLogInput, onChange: function (e) { return setNewLogInput(e.target.value); }, placeholder: "\u65B0\u589E\u9032\u5EA6\u65E5\u8A8C...", onKeyPress: function (e) { return e.key === 'Enter' && addLogEntry(); } }),
+                            React.createElement("button", { onClick: addLogEntry, className: "bg-slate-800 text-white px-4 rounded-lg text-sm font-bold" }, "\u9001\u51FA"))),
+                    React.createElement("div", { className: "relative" },
+                        taskForm.imageUrl && React.createElement("div", { className: "relative rounded-xl overflow-hidden mb-2 border border-slate-200" },
+                            React.createElement("img", { src: taskForm.imageUrl, onClick: function () { return setPreviewImage(taskForm.imageUrl); }, className: "w-full max-h-40 object-cover cursor-zoom-in" }),
+                            React.createElement("button", { onClick: function () { return setTaskForm(__assign(__assign({}, taskForm), { imageUrl: "" })); }, className: "absolute top-2 right-2 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center backdrop-blur-sm" },
+                                React.createElement("i", { className: "fas fa-times text-xs" }))),
+                        React.createElement("button", { onClick: function () { return taskImageInputRef.current.click(); }, className: "w-full h-12 rounded-xl border-2 border-dashed flex items-center justify-center gap-2 text-slate-400 bg-slate-50 text-sm font-bold" },
+                            React.createElement("i", { className: "fas fa-camera" }),
+                            " ",
+                            taskForm.imageUrl ? "換圖" : "上傳附件"),
+                        React.createElement("input", { type: "file", ref: taskImageInputRef, className: "hidden", accept: "image/*", onChange: function (e) { return __awaiter(_this, void 0, void 0, function () {
+                                var _a, _b;
+                                var _c;
+                                return __generator(this, function (_d) {
+                                    switch (_d.label) {
+                                        case 0:
+                                            if (!e.target.files[0]) return [3 /*break*/, 2];
+                                            _a = setTaskForm;
+                                            _b = [__assign({}, taskForm)];
+                                            _c = {};
+                                            return [4 /*yield*/, compressImage(e.target.files[0])];
+                                        case 1:
+                                            _a.apply(void 0, [__assign.apply(void 0, _b.concat([(_c.imageUrl = _d.sent(), _c)]))]);
+                                            _d.label = 2;
+                                        case 2: return [2 /*return*/];
+                                    }
+                                });
+                            }); } }))),
+                React.createElement("button", { onClick: handleTaskSubmit, className: "w-full bg-slate-900 text-white font-bold h-12 rounded-xl mt-4 shadow-lg active:scale-95" }, "\u5132\u5B58\u4EFB\u52D9")))),
+        previewImage && (React.createElement("div", { className: "fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4", onClick: function () { return setPreviewImage(null); } },
+            React.createElement("img", { src: previewImage, className: "max-w-full max-h-full object-contain" }),
+            React.createElement("button", { className: "absolute top-10 right-10 text-white text-3xl" },
+                React.createElement("i", { className: "fas fa-times" }))))));
+}
+var root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(React.createElement(App, null));
 
-      if (loadingAuth) return <div className="h-screen flex items-center justify-center text-slate-400">載入中...</div>;
-      if (!user) return <LoginScreen />;
-
-      return (
-        <div className="min-h-screen flex flex-col bg-slate-50 pb-20 bg-dot-pattern">
-          {menuOpen && <div className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm" onClick={() => setMenuOpen(false)} />}
-          <div className={`fixed inset-y-0 left-0 w-[280px] bg-white shadow-2xl z-50 sidebar flex flex-col ${menuOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
-            <div className="bg-slate-900 text-white p-8 pt-12">
-               <h2 className="font-bold text-xl">業務管理</h2>
-               <div className="text-slate-400 text-xs mt-1 truncate">{user.email}</div>
-            </div>
-            <div className="p-4 space-y-2 flex-1">
-              {[ {id:'home', l:'發文填寫', i:'fa-pen-nib'}, {id:'docs', l:'公文系統', i:'fa-folder-open'}, {id:'tasks', l:'工作管制', i:'fa-tasks'}, {id:'personnel', l:'系統設定', i:'fa-cogs'} ].map(item => (
-                <button key={item.id} onClick={()=>{setCurrentView(item.id); setMenuOpen(false)}} className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center gap-3 ${currentView===item.id ? 'bg-blue-50 text-blue-600' : 'text-slate-600'}`}><i className={`fas ${item.i} w-6`}></i>{item.l}</button>
-              ))}
-              <div className="border-t pt-2 mt-4 space-y-2">
-                 <button onClick={handleExport} className="w-full text-left px-4 py-3 text-slate-600 font-bold flex items-center gap-3"><i className="fas fa-file-export w-6"></i>Excel 匯出</button>
-                 <button onClick={()=>fileInputRef.current.click()} className="w-full text-left px-4 py-3 text-slate-600 font-bold flex items-center gap-3"><i className="fas fa-file-import w-6"></i>Excel 匯入</button>
-                 <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx,.xls" onChange={handleImport} />
-              </div>
-            </div>
-            <div className="p-4 border-t"><button onClick={()=>auth.signOut()} className="w-full text-left px-4 py-3 text-red-500 font-bold"><i className="fas fa-sign-out-alt mr-2"></i>登出</button></div>
-          </div>
-
-          <header className="sticky top-0 z-30 bg-white shadow-sm px-4 h-14 flex items-center gap-4">
-            <button onClick={() => setMenuOpen(true)} className="text-slate-700 text-xl p-1"><i className="fas fa-bars"></i></button>
-            <h1 className="font-bold text-lg text-slate-800">
-              { {home:'發文填寫',docs:'公文系統',tasks:'工作管制',personnel:'系統設定'}[currentView] }
-            </h1>
-          </header>
-
-          {currentView === 'home' && (
-            <main className="p-4 space-y-4 max-w-md mx-auto fade-in">
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1"><label className="text-xs font-bold text-slate-400 ml-1">日期</label><input type="date" className="input-ios" value={form.date} onChange={e=>setForm({...form, date:e.target.value})} /></div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-400 ml-1">發文者</label>
-                    <select className="input-ios" value={form.author} onChange={e=>handleAuthorChange(e.target.value)}>
-                        <option value="" disabled>選擇發文者</option>
-                        {meta.authors.map(a => <option key={a} value={a}>{a}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                   <div className="space-y-1"><label className="text-xs font-bold text-slate-400 ml-1">代字</label><input type="text" className="input-ios" value={form.code} onChange={e=>setForm({...form, code:e.target.value})} placeholder="代字" /></div>
-                   <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-400 ml-1">總號 {isManualNumber ? '(手動)' : '(自動)'}</label>
-                      <div className="relative">
-                        <input type="text" className={`input-ios text-right font-mono ${isManualNumber ? 'border-blue-500 ring-1 ring-blue-50' : 'bg-slate-50'}`} readOnly={!isManualNumber} value={form.number} onChange={e=>setForm({...form, number:e.target.value})} />
-                        <button onClick={()=>setIsManualNumber(!isManualNumber)} className={`absolute left-2 top-3 ${isManualNumber ? 'text-blue-500' : 'text-slate-300'}`}><i className={`fas fa-${isManualNumber?'unlock':'lock'}`}></i></button>
-                      </div>
-                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                   <div className="space-y-1"><label className="text-xs font-bold text-slate-400 ml-1">種類</label><select className="input-ios" value={form.docType} onChange={e=>setForm({...form, docType:e.target.value})}>{['一般公文','人勤令','人職令'].map(t=><option key={t} value={t}>{t}</option>)}</select></div>
-                   <div className="space-y-1"><label className="text-xs font-bold text-slate-400 ml-1">分號 / 階級</label><div className="flex gap-1"><input type="text" className="input-ios text-center font-bold" value={form.subNumber} onChange={e=>setForm({...form, subNumber:e.target.value})} placeholder="分號" />{form.docType !== '一般公文' && <select className="input-ios text-xs" value={form.rank} onChange={e=>setForm({...form, rank:e.target.value})}>{['軍官','士官','士兵'].map(r=><option key={r} value={r}>{r}</option>)}</select>}</div></div>
-                </div>
-                <textarea className="w-full border rounded-xl p-3 h-20 outline-none focus:border-blue-500" placeholder="主旨內容... (可貼上多行，系統將自動依行數拆分建檔)" value={form.subject} onChange={e=>setForm({...form, subject:e.target.value})}></textarea>
-                <div className="grid grid-cols-3 gap-2 pt-2">
-                   <button onClick={()=>{const k=prompt("關鍵字查詢"); if(k) setFilter(prev=>({...prev, type:'search', value:k}))}} className="bg-slate-100 text-slate-600 h-12 rounded-xl font-bold">查詢</button>
-                   <button onClick={()=>handleDocSubmit(false)} disabled={!form.id} className={`h-12 rounded-xl font-bold ${form.id ? 'bg-blue-100 text-blue-600' : 'bg-slate-50 text-slate-300'}`}>修改</button>
-                   <button onClick={()=>handleDocSubmit(true)} disabled={processing} className="bg-slate-900 text-white h-12 rounded-xl font-bold shadow-lg">登錄</button>
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
-                 <div className="text-xs font-bold text-slate-500"><i className="fas fa-filter mr-1"></i> 進階資料篩選列表</div>
-                 <div className="grid grid-cols-2 gap-2">
-                     <div>
-                         <label className="text-[11px] text-slate-400 font-bold block mb-1">公文種類</label>
-                         <select className="w-full border text-xs h-9 rounded-lg px-2 bg-slate-50 font-bold" value={filter.docType} onChange={e => setFilter(prev => ({ ...prev, docType: e.target.value }))}>
-                             <option value="all">全部種類</option>
-                             <option value="一般公文">一般公文</option>
-                             <option value="人勤令">人勤令</option>
-                             <option value="人職令">人職令</option>
-                         </select>
-                     </div>
-                     <div>
-                         <label className="text-[11px] text-slate-400 font-bold block mb-1">官職階級</label>
-                         <select className="w-full border text-xs h-9 rounded-lg px-2 bg-slate-50 font-bold" value={filter.rank} onChange={e => setFilter(prev => ({ ...prev, rank: e.target.value }))} disabled={filter.docType === '一般公文'}>
-                             <option value="all">全部階級</option>
-                             <option value="軍官">軍官</option>
-                             <option value="士官">士官</option>
-                             <option value="士兵">士兵</option>
-                         </select>
-                     </div>
-                 </div>
-                 {(filter.docType !== 'all' || filter.rank !== 'all' || filter.type === 'search') && (
-                     <div className="flex justify-end">
-                         <button onClick={() => setFilter({ type: 'all', value: '', docType: 'all', rank: 'all' })} className="text-xs text-red-500 font-bold"><i className="fas fa-times-circle mr-1"></i>重置篩選項目</button>
-                     </div>
-                 )}
-              </div>
-
-              <div className="space-y-3">
-                 <div className="flex justify-between items-center px-2">
-                    <div className="flex items-center gap-2">
-                        <h2 className="font-bold text-slate-800">近期紀錄</h2>
-                        <button onClick={() => { setIsBatchMode(!isBatchMode); setSelectedRecordIds(new Set()); }} className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-colors ${isBatchMode ? 'bg-slate-800 text-white shadow-sm' : 'bg-blue-50 text-blue-600'}`}>
-                            {isBatchMode ? '取消選取' : '多筆複製'}
-                        </button>
-                    </div>
-                    {isBatchMode ? (
-                        <button onClick={handleBatchCopy} className="text-xs bg-emerald-500 text-white px-3 py-1.5 rounded-lg font-bold shadow-sm active:scale-95 transition-transform">
-                            <i className="fas fa-copy mr-1"></i> 複製勾選 ({selectedRecordIds.size})
-                        </button>
-                    ) : (
-                        <div className="flex gap-1 text-[10px] bg-slate-100 p-1 rounded-lg">
-                            <button onClick={()=>handleSort('date')} className={`px-2 py-1 rounded ${sortConfig.key==='date'?'bg-white shadow text-blue-600':''}`}>日期</button>
-                            <button onClick={()=>handleSort('number')} className={`px-2 py-1 rounded ${sortConfig.key==='number'?'bg-white shadow text-blue-600':''}`}>總號</button>
-                            <button onClick={()=>handleSort('subNumber')} className={`px-2 py-1 rounded ${sortConfig.key==='subNumber'?'bg-white shadow text-blue-600':''}`}>分號</button>
-                        </div>
-                    )}
-                 </div>
-                 {filter.type==='search' && <div className="px-2 text-xs flex justify-between"><span>關鍵字搜尋: {filter.value}</span><button onClick={()=>setFilter(prev=>({...prev, type:'all', value:''}))} className="text-blue-500">清除</button></div>}
-                 
-                 {sortedRecords.map(r => (
-                     <RecordItem 
-                         key={r.id} 
-                         r={r} 
-                         onSelect={setForm} 
-                         onDelete={(id)=>confirm("刪除?")&&db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(id).delete()} 
-                         isBatchMode={isBatchMode}
-                         isSelected={selectedRecordIds.has(r.id)}
-                         onToggleSelect={(id) => {
-                             const newSet = new Set(selectedRecordIds);
-                             if (newSet.has(id)) newSet.delete(id); 
-                             else newSet.add(id);
-                             setSelectedRecordIds(newSet);
-                         }}
-                     />
-                 ))}
-              </div>
-            </main>
-          )}
-
-          {currentView === 'docs' && (
-            <main className="p-4 space-y-4 max-w-md mx-auto fade-in">
-               <div className="flex bg-slate-200 p-1 rounded-xl">
-                  {['人勤令','人職令'].map(t => <button key={t} onClick={()=>setDocTab(t)} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${docTab===t?'bg-white text-blue-600 shadow-sm':'text-slate-500'}`}>{t}</button>)}
-               </div>
-
-               <div className="flex bg-slate-100 p-1 rounded-lg gap-1 border border-slate-200">
-                  {['軍官','士官','士兵'].map(r => (
-                      <button key={r} onClick={() => setDocRankTab(r)} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${docRankTab === r ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'}`}>
-                          {r}分號紀錄
-                      </button>
-                  ))}
-               </div>
-
-               <div className="space-y-3 min-h-[200px]">
-                  {sortedDocsRecords.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-slate-400 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                      <i className="fas fa-folder-open text-3xl mb-3 opacity-50"></i>
-                      <p className="text-sm font-bold">目前無 {docTab} ({docRankTab}) 紀錄</p>
-                    </div>
-                  ) : sortedDocsRecords.map(r => (
-                    <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex justify-between items-center">
-                       <div className="flex-1 min-w-0 pr-2">
-                           <div className="text-[10px] text-slate-400">{r.date?.replace(/-/g, '/')} | {r.author}</div>
-                           <h3 className="font-bold text-slate-800 my-1 truncate">{r.subject}</h3>
-                           <div className="text-xs text-slate-500">總號: #{r.number}</div>
-                       </div>
-                       <div className="text-right flex-shrink-0">
-                          <div className="text-[10px] text-slate-400 font-bold">分號</div>
-                          {editingSubId === r.id ? (
-                            <div className="flex gap-1"><input className="w-12 border rounded text-center font-bold text-sm h-7" value={editSubVal} onChange={e=>setEditSubVal(e.target.value)} autoFocus /><button onClick={async()=>{await db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("records").doc(r.id).update({subNumber:editSubVal}); setEditingSubId(null)}} className="text-green-500 text-xs"><i className="fas fa-check"></i></button></div>
-                          ) : (
-                            <div className="text-xl font-mono font-bold text-blue-900 cursor-pointer bg-slate-50 px-2 py-0.5 rounded border border-slate-100" onClick={()=>{setEditingSubId(r.id); setEditSubVal(r.subNumber)}}>{r.subNumber || "-"}</div>
-                          )}
-                       </div>
-                    </div>
-                  ))}
-               </div>
-            </main>
-          )}
-
-          {currentView === 'tasks' && (
-             <main className="p-4 space-y-4 max-w-md mx-auto fade-in">
-                <div className="flex bg-slate-200 p-1 rounded-xl shadow-sm">
-                   <button onClick={()=>setTaskTab("active")} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${taskTab==='active' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>進行中 ({tasks.filter(t=>!t.completed).length})</button>
-                   <button onClick={()=>setTaskTab("completed")} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${taskTab==='completed' ? 'bg-white text-slate-400 shadow-sm' : 'text-slate-500'}`}>已辦結 ({tasks.filter(t=>t.completed).length})</button>
-                </div>
-                <div className="relative"><i className="fas fa-search absolute left-3 top-3 text-slate-300"></i><input type="text" className="input-ios pl-10 h-10 shadow-sm border-none" placeholder="搜尋標題..." value={taskSearch} onChange={e=>setTaskSearch(e.target.value)} /></div>
-                <div className="space-y-3 pb-20">
-                   {tasks.filter(t => (taskTab === 'active' ? !t.completed : t.completed) && t.title.includes(taskSearch)).map(t => <TaskItem key={t.id} t={t} onClick={(task)=>{setTaskForm({...task, remindDate:task.remindDate||"", logs:task.logs||[]}); setShowTaskModal(true);}} onCloseCase={(id)=>db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).update({completed:true, completedAt:new Date().toISOString()})} onDelete={(e,id)=>confirm("確定要刪除此任務管制案件嗎？")&&db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid).collection("tasks").doc(id).delete()} />)}
-                </div>
-                <button onClick={()=>{setTaskForm({id:null, title:"", type:"行政", delegator:"", priority:"一般", startDate:getCurrentDateTimeISO(), endDate:getCurrentDateTimeISO(), remindDate:"", logs:[], imageUrl:""}); setShowTaskModal(true);}} className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl z-20"><i className="fas fa-plus"></i></button>
-             </main>
-          )}
-
-          {currentView === 'personnel' && (
-             <main className="p-4 space-y-6 max-w-md mx-auto fade-in">
-                <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4 border border-slate-200">
-                   <h2 className="font-bold text-red-600 border-b pb-2 flex items-center gap-2">
-                       <i className="fas fa-history"></i> 批量刪除管理控制台
-                   </h2>
-                   <p className="text-xs text-slate-400 leading-relaxed">選定特定日期區間，一鍵清除系統內對應的發文數據紀錄。此動作具破壞性，請謹慎操作。</p>
-                   <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                         <label className="text-xs font-bold text-slate-500 ml-1">起迄開始日期</label>
-                         <input type="date" className="input-ios h-10 text-sm" value={delStartDate} onChange={e=>setDelStartDate(e.target.value)} />
-                      </div>
-                      <div className="space-y-1">
-                         <label className="text-xs font-bold text-slate-500 ml-1">終止截止日期</label>
-                         <input type="date" className="input-ios h-10 text-sm" value={delEndDate} onChange={e=>setDelEndDate(e.target.value)} />
-                      </div>
-                   </div>
-                   <button onClick={handleBatchDeleteByDateAction} disabled={processing} className="w-full bg-red-500 text-white font-bold h-11 rounded-xl text-sm shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2">
-                       <i className="fas fa-trash-alt"></i> 執行區間批量刪除
-                   </button>
-                </div>
-
-                <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4 border border-slate-200">
-                   <h2 className="font-bold text-slate-800 border-b pb-2 flex items-center gap-2">
-                       <i className="fas fa-clock text-blue-500"></i>排程自動匯出備份設定
-                   </h2>
-                   <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl">
-                       <span className="text-sm font-bold text-slate-700">啟用定期信箱自動匯出</span>
-                       <label className="relative inline-flex items-center cursor-pointer">
-                           <input type="checkbox" checked={exportEnabled} onChange={e => setExportEnabled(e.target.checked)} className="sr-only peer" />
-                           <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                       </label>
-                   </div>
-                   
-                   {exportEnabled && (
-                      <div className="space-y-3 fade-in">
-                          <div className="space-y-1">
-                              <label className="text-xs font-bold text-slate-400 ml-1">匯出週期頻率</label>
-                              <select className="input-ios h-10 text-sm font-bold" value={exportPeriod} onChange={e=>setExportPeriod(e.target.value)}>
-                                  <option value="weekly">每週固定匯出 (每週一)</option>
-                                  <option value="monthly">每月固定匯出 (每月1號)</option>
-                                  <option value="biweekly">每雙週固定匯出</option>
-                              </select>
-                          </div>
-                          <div className="space-y-1">
-                              <label className="text-xs font-bold text-slate-400 ml-1">指定接收通知信箱</label>
-                              <input type="email" className="input-ios h-10 text-sm font-mono font-bold" placeholder="example@mail.mil.tw" value={exportEmail} onChange={e=>setExportEmail(e.target.value)} />
-                          </div>
-                      </div>
-                   )}
-                   <button onClick={handleSaveAutoExport} disabled={processing} className="w-full bg-slate-900 text-white font-bold h-10 rounded-xl text-sm transition-transform active:scale-95">
-                       儲存匯出排程設定
-                   </button>
-                </div>
-
-                <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
-                   <h2 className="font-bold text-slate-800 border-b pb-2">人員及預設代字設定</h2>
-                   <div className="flex gap-2">
-                      <input className="input-ios h-10 flex-1" placeholder="輸入姓名..." value={newAuthor} onChange={e=>setNewAuthor(e.target.value)} />
-                      <button className="bg-blue-600 text-white px-4 rounded-xl font-bold" onClick={async()=>{ if(!newAuthor)return; await updateSettings({ authors: [...meta.authors, newAuthor] }); setNewAuthor(""); }}>新增</button>
-                   </div>
-                   <div className="space-y-2 max-h-60 overflow-y-auto no-scrollbar">
-                      {meta.authors.map(a => (
-                         <div key={a} className="flex flex-col gap-1 p-2 bg-slate-50 rounded-lg">
-                            <div className="flex justify-between items-center">
-                              <span className="font-bold">{a}</span>
-                              <button className="text-red-400" onClick={async()=>confirm("刪除?") && await updateSettings({ authors: meta.authors.filter(x=>x!==a) })}><i className="fas fa-trash-alt"></i></button>
-                            </div>
-                            <div className="flex items-center gap-2 mt-1">
-                               <span className="text-xs text-slate-400">預設代字:</span>
-                               {editingAuthorDefault === a ? (
-                                  <div className="flex flex-1 gap-1">
-                                    <input className="flex-1 h-7 border rounded px-2 text-xs" list="codeList" value={meta.authorDefaults?.[a] || ""} onChange={(e)=>saveAuthorDefault(a, e.target.value)} onBlur={()=>setTimeout(()=>setEditingAuthorDefault(null), 200)} autoFocus />
-                                    <datalist id="codeList">{meta.codes?.map(c=><option key={c} value={c}/>)}</datalist>
-                                  </div>
-                               ) : (
-                                  <div className="flex flex-1 justify-between items-center cursor-pointer" onClick={()=>setEditingAuthorDefault(a)}>
-                                     <span className="text-xs font-bold text-blue-600">{meta.authorDefaults?.[a] || "未設定"}</span>
-                                     <i className="fas fa-edit text-[10px] text-slate-300"></i>
-                                  </div>
-                               )}
-                            </div>
-                         </div>
-                      ))}
-                   </div>
-                </div>
-
-                <div className="bg-white p-5 rounded-2xl shadow-sm space-y-4">
-                   <h2 className="font-bold text-slate-800 border-b pb-2">業務分類設定</h2>
-                   <div className="flex gap-2">
-                      <input className="input-ios h-10 flex-1" placeholder="輸入種類..." value={newTaskType} onChange={e=>setNewTaskType(e.target.value)} />
-                      <button className="bg-slate-800 text-white px-4 rounded-xl font-bold" onClick={async()=>{ if(!newTaskType)return; await updateSettings({ taskTypes: [...meta.taskTypes, newTaskType] }); setNewTaskType(""); }}>新增</button>
-                   </div>
-                   <div className="flex flex-wrap gap-2">
-                      {meta.taskTypes.map(t => (
-                         <span key={t} className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2">
-                            {t} <i className="fas fa-times cursor-pointer" onClick={async()=>await updateSettings({ taskTypes: meta.taskTypes.filter(x=>x!==t) })}></i>
-                         </span>
-                      ))}
-                    </div>
-                </div>
-             </main>
-          )}
-
-          {showTaskModal && (
-             <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0">
-                <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={()=>setShowTaskModal(false)}></div>
-                <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 relative z-10 flex flex-col max-h-[90vh] shadow-2xl">
-                   <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">事項編輯</h2><button onClick={()=>setShowTaskModal(false)}><i className="fas fa-times text-xl"></i></button></div>
-                   <div className="space-y-4 overflow-y-auto no-scrollbar flex-1 pb-4">
-                      <div className="space-y-1"><label className="text-xs font-bold text-slate-400">事項名稱</label><input className="input-ios bg-slate-50 font-bold" value={taskForm.title} onChange={e=>setTaskForm({...taskForm, title:e.target.value})} placeholder="任務內容..." /></div>
-                      <div className="grid grid-cols-2 gap-3">
-                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">種類</label><select className="input-ios bg-slate-50" value={taskForm.type} onChange={e=>setTaskForm({...taskForm, type:e.target.value})}>{meta.taskTypes.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
-                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">委託人</label><input className="input-ios bg-slate-50" value={taskForm.delegator} onChange={e=>setTaskForm({...taskForm, delegator:e.target.value})} placeholder="委託人" /></div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">開始時間</label><input type="datetime-local" className="input-ios bg-slate-50 text-xs" value={taskForm.startDate} onChange={e=>setTaskForm({...taskForm, startDate:e.target.value})} /></div>
-                         <div className="space-y-1"><label className="text-xs font-bold text-slate-400">辦理期限</label><input type="datetime-local" className={`input-ios text-xs ${new Date(taskForm.endDate) < new Date() ? 'border-red-400' : 'bg-slate-50'}`} value={taskForm.endDate} onChange={e=>setTaskForm({...taskForm, endDate:e.target.value})} /></div>
-                      </div>
-                      
-                      <div className="space-y-1">
-                         <label className="text-xs font-bold text-blue-600 flex items-center gap-1">
-                            <i className="fas fa-bell animate-pulse"></i> 自訂彈窗提醒時間 (選填)
-                         </label>
-                         <input type="datetime-local" className="input-ios bg-blue-50/50 text-xs border-blue-200" value={taskForm.remindDate || ""} onChange={e=>setTaskForm({...taskForm, remindDate:e.target.value})} />
-                         <p className="text-[10px] text-slate-400 ml-1">時間到時，系統將主動透過瀏覽器發送橫幅彈窗提醒您。</p>
-                      </div>
-
-                      <div className="space-y-2">
-                         <label className="text-xs font-bold text-slate-500"><i className="fas fa-history mr-1"></i> 辦理日誌</label>
-                         <div className="bg-slate-50 rounded-xl p-3 border space-y-2 min-h-[60px]">
-                            {taskForm.logs?.length === 0 ? <div className="text-slate-300 text-xs text-center py-2">尚無紀錄</div> : taskForm.logs?.map(log => (
-                               <div key={log.id} className="flex gap-2 text-sm border-b pb-1 last:border-0"><span className="text-blue-500 font-bold">{log.time}</span><span className="text-slate-700 flex-1">{log.content}</span><button onClick={()=>setTaskForm(p=>({...p, logs:p.logs.filter(l=>l.id!==log.id)}))} className="text-slate-300"><i className="fas fa-times"></i></button></div>
-                            ))}
-                         </div>
-                         <div className="flex gap-2">
-                            <input className="input-ios bg-white flex-1 h-10 text-sm" value={newLogInput} onChange={e=>setNewLogInput(e.target.value)} placeholder="新增進度日誌..." onKeyPress={e=>e.key==='Enter' && addLogEntry()} />
-                            <button onClick={addLogEntry} className="bg-slate-800 text-white px-4 rounded-lg text-sm font-bold">送出</button>
-                         </div>
-                      </div>
-                      <div className="relative">
-                         {taskForm.imageUrl && <div className="relative rounded-xl overflow-hidden mb-2 border border-slate-200"><img src={taskForm.imageUrl} onClick={() => setPreviewImage(taskForm.imageUrl)} className="w-full max-h-40 object-cover cursor-zoom-in" /><button onClick={()=>setTaskForm({...taskForm, imageUrl:""})} className="absolute top-2 right-2 bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center backdrop-blur-sm"><i className="fas fa-times text-xs"></i></button></div>}
-                         <button onClick={()=>taskImageInputRef.current.click()} className="w-full h-12 rounded-xl border-2 border-dashed flex items-center justify-center gap-2 text-slate-400 bg-slate-50 text-sm font-bold"><i className="fas fa-camera"></i> {taskForm.imageUrl ? "換圖" : "上傳附件"}</button>
-                         <input type="file" ref={taskImageInputRef} className="hidden" accept="image/*" onChange={async(e)=>{ if(e.target.files[0]) setTaskForm({...taskForm, imageUrl: await compressImage(e.target.files[0])}) }} />
-                      </div>
-                   </div>
-                   <button onClick={handleTaskSubmit} className="w-full bg-slate-900 text-white font-bold h-12 rounded-xl mt-4 shadow-lg active:scale-95">儲存任務</button>
-                </div>
-             </div>
-          )}
-
-          {previewImage && (
-             <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4" onClick={() => setPreviewImage(null)}>
-                <img src={previewImage} className="max-w-full max-h-full object-contain" />
-                <button className="absolute top-10 right-10 text-white text-3xl"><i className="fas fa-times"></i></button>
-             </div>
-          )}
-        </div>
-      );
-    }
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(<App />);
   </script>
 </body>
 </html>

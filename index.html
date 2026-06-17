@@ -54,6 +54,53 @@
 <body>
   <div id="root"><div style="height:100vh;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-family:-apple-system,sans-serif;font-size:15px;letter-spacing:0.05em;">載入中...</div></div>
 
+  <!-- 錯誤診斷：攔截所有 JS 錯誤並顯示在畫面上 -->
+  <script>
+  window.onerror = function(msg, src, line, col, err) {
+    var el = document.getElementById('root');
+    if (!el) return true;
+    var srcName = src ? src.split('/').pop().split('?')[0] : '未知';
+    el.innerHTML =
+      '<div style="padding:24px 20px;font-family:-apple-system,sans-serif;font-size:13px;line-height:1.9;background:#fff;min-height:100vh;">' +
+      '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px;margin-bottom:16px;">' +
+      '<b style="color:#b91c1c;font-size:15px;">❌ 系統載入失敗</b><br><br>' +
+      '<b>錯誤：</b><span style="color:#dc2626;">' + (msg||'未知錯誤') + '</span><br>' +
+      '<b>來源：</b>' + srcName + (line ? ':'+line : '') + '<br>' +
+      '</div>' +
+      '<div style="background:#f8fafc;border-radius:12px;padding:16px;">' +
+      '<b>依賴套件狀態：</b><br>' +
+      '• React: ' + (typeof React!=='undefined'?'<span style="color:green">✓ 已載入</span>':'<span style="color:red">✗ 未載入</span>') + '<br>' +
+      '• ReactDOM: ' + (typeof ReactDOM!=='undefined'?'<span style="color:green">✓ 已載入</span>':'<span style="color:red">✗ 未載入</span>') + '<br>' +
+      '• Firebase: ' + (typeof firebase!=='undefined'?'<span style="color:green">✓ 已載入</span>':'<span style="color:red">✗ 未載入</span>') + '<br>' +
+      '• XLSX: ' + (typeof XLSX!=='undefined'?'<span style="color:green">✓ 已載入</span>':'<span style="color:red">✗ 未載入</span>') + '<br>' +
+      '</div><br>' +
+      '<p style="color:#64748b;font-size:12px;">請截圖此畫面回報，或重新整理後再試。</p>' +
+      '</div>';
+    return true;
+  };
+  </script>
+
+  <!-- 依賴套件預檢：在主程式執行前確認所有 CDN 都載入成功 -->
+  <script>
+  (function() {
+    var missing = [];
+    if (typeof React === 'undefined') missing.push('React');
+    if (typeof ReactDOM === 'undefined') missing.push('ReactDOM');
+    if (typeof firebase === 'undefined') missing.push('Firebase');
+    if (missing.length === 0) return;
+    var el = document.getElementById('root');
+    if (el) el.innerHTML =
+      '<div style="padding:24px 20px;font-family:-apple-system,sans-serif;font-size:13px;line-height:2;background:#fff;min-height:100vh;">' +
+      '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px;">' +
+      '<b style="color:#b91c1c;font-size:15px;">❌ 套件載入失敗</b><br><br>' +
+      '以下套件無法從 CDN 載入：<br>' +
+      missing.map(function(m){return '• <b>'+m+'</b>';}).join('<br>') + '<br><br>' +
+      '可能原因：網路不穩或 CDN 被封鎖。<br>請確認網路後重新整理。' +
+      '</div></div>';
+    throw new Error('依賴套件未載入: ' + missing.join(', '));
+  })();
+  </script>
+
   <!-- Pre-compiled JavaScript (no Babel required) -->
   <script>
 "use strict";
@@ -1212,8 +1259,18 @@ function App() {
             React.createElement("button", { className: "absolute top-10 right-10 text-white text-3xl" },
                 React.createElement("i", { className: "fas fa-times" }))))));
 }
-var root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(React.createElement(App, null));
+try {
+  var root = ReactDOM.createRoot(document.getElementById("root"));
+  root.render(React.createElement(App, null));
+} catch(err) {
+  var el = document.getElementById('root');
+  if (el) el.innerHTML =
+    '<div style="padding:24px 20px;font-family:-apple-system,sans-serif;font-size:13px;line-height:1.9;background:#fff;min-height:100vh;">' +
+    '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px;">' +
+    '<b style="color:#b91c1c;font-size:15px;">❌ React 渲染錯誤</b><br><br>' +
+    (err && err.message ? err.message : String(err)) +
+    '</div></div>';
+}
 
   </script>
 </body>

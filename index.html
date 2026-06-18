@@ -184,6 +184,7 @@ if (!firebase.apps.length)
     firebase.initializeApp(firebaseConfig);
 var auth = firebase.auth();
 var db = firebase.firestore();
+db.enablePersistence({ synchronizeTabs: false }).catch(function () {});
 var useState = React.useState, useEffect = React.useEffect, useMemo = React.useMemo, useRef = React.useRef, memo = React.memo;
 var formatDateTime = function (isoStr) {
     if (!isoStr)
@@ -411,6 +412,7 @@ function App() {
     var _a, _b;
     var _c = useState(null), user = _c[0], setUser = _c[1];
     var _d = useState(true), loadingAuth = _d[0], setLoadingAuth = _d[1];
+    var _on = useState(typeof navigator !== 'undefined' ? navigator.onLine !== false : true), isOnline = _on[0], setIsOnline = _on[1];
     var _e = useState(false), menuOpen = _e[0], setMenuOpen = _e[1];
     var _f = useState("home"), currentView = _f[0], setCurrentView = _f[1];
     var _g = useState([]), records = _g[0], setRecords = _g[1];
@@ -513,13 +515,37 @@ function App() {
     var _9 = useState(""), exportEmail = _9[0], setExportEmail = _9[1];
     var fileInputRef = useRef(null);
     var taskImageInputRef = useRef(null);
-    useEffect(function () { return auth.onAuthStateChanged(function (u) { setUser(u); setLoadingAuth(false); }); }, []);
+    useEffect(function () {
+        var unsub = auth.onAuthStateChanged(function (u) { setUser(u); setLoadingAuth(false); });
+        var handleVisibility = function () {
+            if (document.hidden) return;
+            var cu = auth.currentUser;
+            if (cu) cu.getIdToken(true).catch(function () { setUser(null); setLoadingAuth(false); });
+        };
+        var handleOnline = function () { setIsOnline(true); db.enableNetwork().catch(function () {}); };
+        var handleOffline = function () { setIsOnline(false); };
+        document.addEventListener('visibilitychange', handleVisibility);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return function () {
+            unsub();
+            document.removeEventListener('visibilitychange', handleVisibility);
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
     useEffect(function () {
         if (!user)
             return;
         var userRef = db.collection("artifacts").doc(CURRENT_APP_ID).collection("users").doc(user.uid);
-        var unsubRec = userRef.collection("records").orderBy("createdAt", "desc").limit(1000).onSnapshot(function (s) { return setRecords(s.docs.map(function (d) { return (__assign({ id: d.id }, d.data())); })); });
-        var unsubTask = userRef.collection("tasks").orderBy("createdAt", "desc").onSnapshot(function (s) { return setTasks(s.docs.map(function (d) { return (__assign({ id: d.id }, d.data())); })); });
+        var onSnapErr = function (err) {
+            if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
+                setUser(null);
+                setLoadingAuth(false);
+            }
+        };
+        var unsubRec = userRef.collection("records").orderBy("createdAt", "desc").limit(1000).onSnapshot(function (s) { return setRecords(s.docs.map(function (d) { return (__assign({ id: d.id }, d.data())); })); }, onSnapErr);
+        var unsubTask = userRef.collection("tasks").orderBy("createdAt", "desc").onSnapshot(function (s) { return setTasks(s.docs.map(function (d) { return (__assign({ id: d.id }, d.data())); })); }, onSnapErr);
         var unsubMeta = userRef.collection("metadata").doc("general").onSnapshot(function (doc) {
             if (doc.exists) {
                 var data_1 = doc.data();
@@ -530,7 +556,7 @@ function App() {
                     setExportEmail(data_1.autoExport.email || '');
                 }
             }
-        });
+        }, onSnapErr);
         return function () { unsubRec(); unsubTask(); unsubMeta(); };
     }, [user]);
     var nextNumbers = useMemo(function () {
@@ -909,10 +935,14 @@ function App() {
         reader.readAsBinaryString(file);
     };
     if (loadingAuth)
-        return React.createElement("div", { className: "h-screen flex items-center justify-center text-slate-400" }, "\u8F09\u5165\u4E2D...");
+        return React.createElement("div", { className: "h-screen flex flex-col items-center justify-center gap-4 text-slate-400 bg-slate-50" },
+            React.createElement("div", { className: "w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" }),
+            React.createElement("div", { className: "text-sm" }, "\u9A57\u8B49\u767B\u5165\u72C0\u614B\u2026"),
+            !isOnline && React.createElement("div", { className: "text-xs text-amber-500 mt-1" }, "\u7DB2\u8DEF\u96E2\u7DDA\u4E2D\uFF0C\u8ACB\u6AA2\u67E5\u9023\u7DDA"));
     if (!user)
         return React.createElement(LoginScreen, null);
     return (React.createElement("div", { className: "min-h-screen flex flex-col bg-slate-50 pb-20 bg-dot-pattern" },
+        !isOnline && React.createElement("div", { className: "fixed top-0 left-0 right-0 z-[200] bg-amber-500 text-white text-center text-xs font-bold py-1.5 tracking-wide" }, "⚠ 目前離線，資料將在恢復網路後自動同步"),
         menuOpen && React.createElement("div", { className: "fixed inset-0 bg-black/30 z-40 backdrop-blur-sm", onClick: function () { return setMenuOpen(false); } }),
         React.createElement("div", { className: "fixed inset-y-0 left-0 w-[280px] bg-white shadow-2xl z-50 sidebar flex flex-col ".concat(menuOpen ? 'sidebar-open' : 'sidebar-closed') },
             React.createElement("div", { className: "bg-slate-900 text-white p-8 pt-12" },
